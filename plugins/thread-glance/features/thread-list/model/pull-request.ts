@@ -1,5 +1,5 @@
 // How a pull request from GitHub PR Status is worded and coloured: the badge
-// on a row and the hover card's section both take its attention for their
+// on a row and the hover card's section both take its attention state for their
 // label and tone. Pure.
 import type { GitHubPullRequest } from "@/shared/github-pr-status";
 
@@ -22,7 +22,7 @@ const LABELS: Record<Exclude<Attention, "none">, string> = {
   review_requested: "Review requested",
 };
 
-/** The attention as a label; "Open" when GitHub PR Status reports none. */
+/** The attention state as a label; "Open" when GitHub PR Status reports none. */
 export function pullRequestLabel(pullRequest: Pick<GitHubPullRequest, "attention">): string {
   return pullRequest.attention === "none" ? "Open" : LABELS[pullRequest.attention];
 }

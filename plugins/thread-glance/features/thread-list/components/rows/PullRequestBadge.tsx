@@ -1,5 +1,5 @@
 // The pull-request badge `#number` from GitHub PR Status, coloured by its
-// attention, with the title and label as its tooltip. It opens the pull
+// attention state, with the title and label as its tooltip. It opens the pull
 // request in a new tab. Mounted only where a card shows it, so a pull request
 // is looked up only for the cards that are drawn.
 import { cn } from "@/lib/utils";

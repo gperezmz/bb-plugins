@@ -41,7 +41,7 @@ export interface FakeHost {
   updateThread(id: string, patch: Partial<PluginSidebarThread>): void;
   /** Replaces the list's props; `onNavigate` gets a new identity. */
   updateProps(patch?: Partial<PluginThreadListProps>): void;
-  /** Every call to bb's SDK the list made, as `<area>.<method>` with its arguments. */
+  /** Every call to bb's SDK the list made, as `<area>.<method>` with its arguments, and each to GitHub PR Status's `pullRequests`. */
   sdkCalls: { method: string; args: unknown }[];
   /** How many times the list's `onNavigate` ran. */
   navigated: number;
@@ -251,6 +251,7 @@ export function mountList(loaded: PluginApp, server: ServerState, slot: SlotExtr
 /** GitHub PR Status's `pullRequests`, answering from `rows`. */
 function githubPrStatus(rows: Record<string, unknown> | null) {
   return async ({ keys }: { keys: string[] }) => {
+    hostOrThrow().sdkCalls.push({ method: "bb--github-pr-status.pullRequests", args: { keys } });
     if (rows === null) throw new Error('plugin "bb--github-pr-status" is not running (status: disabled)');
     return Object.fromEntries(keys.map((key) => [key, rows[key] ?? { outcome: "absent" }]));
   };

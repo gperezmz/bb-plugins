@@ -40,7 +40,7 @@ describe("reading GitHub PR Status", () => {
       env_merged: { kind: "available", state: "merged", updatedAt: Date.parse("2026-10-22T19:27:07Z") },
       env_none: { kind: "absent" },
       env_offline: { kind: "unknown" },
-      env_gone: { kind: "unknown" },
+      env_gone: { kind: "absent" },
     });
     expect(errors).toEqual([]);
   });
@@ -49,6 +49,23 @@ describe("reading GitHub PR Status", () => {
     const message = "gh pr view failed: none of the git remotes configured for this repository point to a known GitHub host. To tell gh about a new GitHub host, please use `gh auth login`";
     const { pullRequests } = fakeBb({ answer: () => ({ env: { outcome: "unavailable", message } }) });
     expect((await pullRequests.read(["env"])).get("env")).toEqual({ kind: "unknown" });
+  });
+
+  it("reads a workspace that is gone as having no pull request, by the message GitHub PR Status 0.1.0 gives, and a reworded one as unknown", async () => {
+    const { pullRequests } = fakeBb({
+      answer: () => ({
+        gone: CAPTURED_PULL_REQUESTS.env_gone,
+        reworded: { outcome: "unavailable", message: "The workspace at /tmp/tmp.qpn5eBNR89 is gone" },
+      }),
+    });
+    expect(Object.fromEntries(await pullRequests.read(["gone", "reworded"]))).toEqual({ gone: { kind: "absent" }, reworded: { kind: "unknown" } });
+  });
+
+  it("reads a pull request whose attention, checks, review or mergeability holds a value it does not know, since auto-settle reads only its state and time", async () => {
+    const pullRequest = { ...CAPTURED_PULL_REQUESTS.env_merged.pullRequest, attention: "auto_merging", checks: { state: "skipped" }, review: undefined };
+    const { pullRequests, errors } = fakeBb({ answer: () => ({ env: { outcome: "available", pullRequest } }) });
+    expect((await pullRequests.read(["env"])).get("env")).toMatchObject({ kind: "available", state: "merged" });
+    expect(errors).toEqual([]);
   });
 
   it("reads a pull request whose time does not parse as one with no time", async () => {

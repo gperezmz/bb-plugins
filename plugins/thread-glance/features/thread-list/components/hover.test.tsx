@@ -120,7 +120,7 @@ describe("AC19: the Hover card", () => {
     expect(within(document.querySelector<HTMLElement>("[data-hover-card]")!).getAllByText("Unavailable")).toHaveLength(2);
   });
 
-  it("shows the branch's pull request with its attention, in red when checks failed", async () => {
+  it("shows the branch's pull request with its attention state, in red when checks failed", async () => {
     await mount({ threads: [makeThread({ id: "a", ...fresh })], slot: { pullRequests: { env_main: available() }, sdk: models(null) } });
     await focusWithKeyboard(anchor("a"));
     const section = document.querySelector<HTMLElement>("[data-section=pull-request]")!;
@@ -200,19 +200,23 @@ describe("#330: pull requests from GitHub PR Status", () => {
   });
 
   it("asks GitHub PR Status by each thread's environment", async () => {
-    await mount({
+    const { host } = await mount({
       threads: [makeThread({ id: "a", ...fresh, environment: { id: "env_x" } }), makeThread({ id: "b", ...fresh, environment: { id: "env_y" } })],
       slot: { pullRequests: { env_y: available() }, sdk: models(null) },
     });
     await flush();
     expect(badge("a")).toBeNull();
     expect(badge("b")?.textContent).toBe("#7");
+    const asked = host.sdkCalls.filter((call) => call.method === "bb--github-pr-status.pullRequests").flatMap((call) => (call.args as { keys: string[] }).keys);
+    expect(new Set(asked)).toEqual(new Set(["env_x", "env_y"]));
   });
 
   it.each([
     ["the lookup failed", { env_main: { outcome: "unavailable", message: "gh auth status failed: not logged in" } }],
     ["the row is out of shape", { env_main: { outcome: "available", pullRequest: { number: 7 } } }],
     ["the link is not a web address", { env_main: available({ url: "javascript:alert(1)" }) }],
+    ["its attention state is one this version does not know", { env_main: available({ attention: "auto_merging" }) }],
+    ["the workspace is gone", { env_main: { outcome: "unavailable", message: "Workspace path no longer exists: /tmp/tmp.qpn5eBNR89" } }],
     ["GitHub PR Status is disabled or absent", null],
   ] as const)("AC3: shows no badge and no hover card pull request when %s", async (_case, pullRequests) => {
     await mount({ threads: [makeThread({ id: "a", ...fresh })], slot: { pullRequests, sdk: models(null) } });
@@ -224,9 +228,10 @@ describe("#330: pull requests from GitHub PR Status", () => {
   });
 
   it("asks nothing for a thread without an environment", async () => {
-    await mount({ threads: [makeThread({ id: "a", ...fresh, environment: null })], slot: { pullRequests: { env_main: available() }, sdk: models(null) } });
+    const { host } = await mount({ threads: [makeThread({ id: "a", ...fresh, environment: null })], slot: { pullRequests: { env_main: available() }, sdk: models(null) } });
     await flush();
     expect(badge("a")).toBeNull();
+    expect(host.sdkCalls.filter((call) => call.method === "bb--github-pr-status.pullRequests")).toEqual([]);
   });
 });
 

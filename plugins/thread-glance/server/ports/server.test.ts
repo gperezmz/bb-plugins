@@ -47,7 +47,6 @@ function macos(): FakeSystem {
   });
 }
 
-/** The plugin over a fake bb whose threads hold one idle thread, working in /work/app, and whose host entry is the real one over `system`. */
 /**
  * bb's GitHub PR Status plugin, as `bb.sdk.plugins` reaches it: `answer` gives
  * the rows for the environments asked, every one absent by default.
@@ -66,6 +65,7 @@ function githubPrStatus({ answer = () => ({}), enabled = true }: { answer?: (key
   };
 }
 
+/** The plugin over a fake bb whose threads hold one idle thread, working in /work/app, and whose host entry is the real one over `system`. */
 async function load(
   system: FakeSystem,
   options: { threads?: ReturnType<typeof listedThread>[]; hostFails?: boolean; pullRequests?: Parameters<typeof githubPrStatus>[0] } = {},
@@ -335,6 +335,11 @@ describe("#330: auto-settle reads GitHub PR Status through the SDK", () => {
       pullRequests: { answer: () => ({ "env-merged": merged(), "env-offline": CAPTURED_PULL_REQUESTS.env_offline }) },
     });
     expect(await harness.behavior.callRpc("runAutoSettle", {})).toEqual({ settled: ["thr_merged"], unsettled: [] });
+  });
+
+  it("settles a quiet thread whose workspace is gone", async () => {
+    const { harness } = await load(linux(), { threads: [quiet("thr_gone", "env-gone", 9)], pullRequests: { answer: () => ({ "env-gone": CAPTURED_PULL_REQUESTS.env_gone }) } });
+    expect(await harness.behavior.callRpc("runAutoSettle", {})).toEqual({ settled: ["thr_gone"], unsettled: [] });
   });
 
   it("AC3: settles a quiet thread when GitHub PR Status is disabled", async () => {

@@ -2,14 +2,28 @@
 // `pullRequests` RPC, one row per environment id. The plugin ships no contract
 // to import, so the shape of a row is declared here, from the plugin bb 0.47.1
 // bundles; that declaration is the line most likely to break on a later bb.
-// The server's auto-settle and the app's badge and hover card read a row the
-// same way, through `readPullRequestRow`.
+// Each reader declares only the fields it reads: auto-settle a pull request's
+// state and time (`readSettleRow`), the badge and the hover card what they
+// show (`readPullRequestRow`), so a value added to a field auto-settle never
+// reads leaves it working.
 import * as z from "zod/mini";
 
 export const GITHUB_PR_STATUS_PLUGIN_ID = "bb--github-pr-status";
 export const PULL_REQUESTS_METHOD = "pullRequests";
 /** The most environment ids one `pullRequests` call takes. */
 export const PULL_REQUESTS_MAX_KEYS = 200;
+
+/**
+ * How GitHub PR Status 0.1.0 opens an `unavailable` row's message when the
+ * environment's workspace is gone, a lookup no later pass can answer either.
+ * A reworded message reads as a failed lookup.
+ */
+export const WORKSPACE_GONE_MESSAGE = "Workspace path no longer exists: ";
+
+const settlePullRequestSchema = z.object({
+  state: z.enum(["draft", "open", "merged", "closed"]),
+  updatedAt: z.string(),
+});
 
 const pullRequestSchema = z.object({
   number: z.number(),
@@ -37,49 +51,62 @@ const pullRequestSchema = z.object({
   mergeability: z.object({ state: z.enum(["mergeable", "conflicts", "blocked", "draft", "unknown"]) }),
 });
 
-const rowSchema = z.discriminatedUnion("outcome", [
-  z.object({ outcome: z.literal("available"), pullRequest: pullRequestSchema }),
-  z.object({ outcome: z.literal("absent") }),
-  z.object({ outcome: z.literal("unavailable"), message: z.string() }),
-]);
-
-/** A pull request as GitHub PR Status reports it, with the fields Thread Glance reads. */
+/** A pull request as GitHub PR Status reports it, with the fields the badge and the hover card read. */
 export type GitHubPullRequest = z.infer<typeof pullRequestSchema>;
 
+/** A pull request with the fields auto-settle reads. */
+export type SettlePullRequest = z.infer<typeof settlePullRequestSchema>;
+
 /** One environment's row, read. */
-export type PullRequestRow =
-  | { kind: "available"; pullRequest: GitHubPullRequest }
-  /** No pull request can be had: none for the branch, or no git repository. */
+export type PullRequestRow<PullRequest> =
+  | { kind: "available"; pullRequest: PullRequest }
+  /** No pull request can be had: none for the branch, no git repository, or a workspace that is gone. */
   | { kind: "absent" }
   /**
    * The plugin could not say, whatever the cause (offline, `gh` not logged in,
    * a stopped machine, a remote not on GitHub): no evidence either way.
    */
-  | { kind: "failed"; message: string }
+  | { kind: "failed" }
   /** The row is not in the declared shape; `issues` names where it differs. */
   | { kind: "mismatch"; issues: string };
 
-/** Reads one row of a `pullRequests` answer; `undefined` is a row the answer left out. */
-export function readPullRequestRow(row: unknown): PullRequestRow {
-  const parsed = rowSchema.safeParse(row);
-  if (!parsed.success) {
-    const issues = parsed.error.issues.map((issue) => `${issue.path.length === 0 ? "row" : issue.path.join(".")}: ${issue.message}`);
-    return { kind: "mismatch", issues: issues.join("; ") };
-  }
-  const value = parsed.data;
-  switch (value.outcome) {
-    case "available":
-      return { kind: "available", pullRequest: value.pullRequest };
-    case "absent":
-      return { kind: "absent" };
-    case "unavailable":
-      return { kind: "failed", message: value.message };
-  }
+function rowReader<PullRequest>(pullRequest: z.ZodMiniType<PullRequest>) {
+  const rowSchema = z.discriminatedUnion("outcome", [
+    z.object({ outcome: z.literal("available"), pullRequest }),
+    z.object({ outcome: z.literal("absent") }),
+    z.object({ outcome: z.literal("unavailable"), message: z.string() }),
+  ]);
+  /** Reads one row of a `pullRequests` answer; `undefined` is a row the answer left out. */
+  return (row: unknown): PullRequestRow<PullRequest> => {
+    const parsed = rowSchema.safeParse(row);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map((issue) => `${issue.path.length === 0 ? "row" : issue.path.join(".")}: ${issue.message}`);
+      return { kind: "mismatch", issues: issues.join("; ") };
+    }
+    const value = parsed.data;
+    switch (value.outcome) {
+      case "available":
+        return { kind: "available", pullRequest: value.pullRequest as PullRequest };
+      case "absent":
+        return { kind: "absent" };
+      case "unavailable":
+        return value.message.startsWith(WORKSPACE_GONE_MESSAGE) ? { kind: "absent" } : { kind: "failed" };
+    }
+  };
 }
+
+/** A row as the badge and the hover card read it. */
+export const readPullRequestRow = rowReader(pullRequestSchema);
+
+/** A row as auto-settle reads it. */
+export const readSettleRow = rowReader(settlePullRequestSchema);
+
+const rowsSchema = z.record(z.string(), z.unknown());
 
 /** The answer as a record of rows, or null when it is not one. */
 export function pullRequestRows(answer: unknown): Readonly<Record<string, unknown>> | null {
-  return typeof answer === "object" && answer !== null && !Array.isArray(answer) ? (answer as Record<string, unknown>) : null;
+  const parsed = rowsSchema.safeParse(answer);
+  return parsed.success ? parsed.data : null;
 }
 
 /**
@@ -90,6 +117,6 @@ export function pullRequestRows(answer: unknown): Readonly<Record<string, unknow
 export const githubPrStatusContract = {
   [PULL_REQUESTS_METHOD]: {
     input: z.object({ keys: z.array(z.string()) }),
-    output: z.record(z.string(), z.unknown()),
+    output: rowsSchema,
   },
 } as const;
