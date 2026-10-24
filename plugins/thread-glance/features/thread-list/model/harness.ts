@@ -19,7 +19,21 @@ export function modelLine(state: ModelState): string {
   }
 }
 
+export interface CatalogModel {
+  id: string;
+  model: string;
+  displayName: string;
+  supportedReasoningEfforts?: readonly { reasoningEffort: string; label?: string }[];
+}
+
 /** The model's display name from the provider's catalog, else its id. */
-export function modelDisplayName(model: string, catalog: readonly { id: string; model: string; displayName: string }[]): string {
+export function modelDisplayName(model: string, catalog: readonly CatalogModel[]): string {
   return catalog.find((entry) => entry.model === model || entry.id === model)?.displayName ?? model;
+}
+
+/** The label the catalog gives the model's reasoning level, else the level itself. */
+export function reasoningLevelLabel(model: string, level: string | null, catalog: readonly CatalogModel[]): string | null {
+  if (level === null) return null;
+  const entry = catalog.find((candidate) => candidate.model === model || candidate.id === model);
+  return entry?.supportedReasoningEfforts?.find((effort) => effort.reasoningEffort === level)?.label ?? level;
 }

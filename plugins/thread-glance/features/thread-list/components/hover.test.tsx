@@ -100,6 +100,25 @@ describe("AC19: the Hover card", () => {
     expect(hover.textContent).not.toContain("Reasoning");
   });
 
+  it("shows the catalog's label for a provider-specific level", async () => {
+    await mount({
+      threads: [makeThread({ id: "a", ...fresh })],
+      slot: {
+        sdk: {
+          threads: { defaultExecutionOptions: async () => ({ model: "claude-x", reasoningLevel: "ultra" }) },
+          providers: {
+            models: async () => ({
+              models: [{ id: "claude-x", model: "claude-x", displayName: "Claude X", supportedReasoningEfforts: [{ reasoningEffort: "ultra", label: "Ultracode" }] }],
+            }),
+          },
+        },
+      },
+    });
+    await focusWithKeyboard(anchor("a"));
+    await flush();
+    expect(within(document.querySelector<HTMLElement>("[data-hover-card]")!).getByText("Claude X Ultracode")).toBeTruthy();
+  });
+
   it("says Not set when bb has no model and Unavailable when it cannot be loaded", async () => {
     await mount({
       threads: [makeThread({ id: "a", ...fresh }), makeThread({ id: "b", ...fresh })],

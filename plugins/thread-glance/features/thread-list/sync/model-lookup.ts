@@ -2,16 +2,17 @@
 // which the Hover card shows. Asked of bb once per thread and status: a
 // finished turn can change what the next message uses.
 import type { PluginBrowserBbSdk } from "@get-bb/plugin-sdk/app";
-import { modelDisplayName } from "../model/harness";
+import { modelDisplayName, reasoningLevelLabel, type CatalogModel } from "../model/harness";
 
 export interface ModelAnswer {
   /** The catalog's display name, else the model's id; null when bb has none for the thread. */
   model: string | null;
+  /** The catalog's label for the level where it has one, else the level as bb reports it. */
   reasoningLevel: string | null;
 }
 
 const answers = new Map<string, Promise<ModelAnswer>>();
-const catalogs = new Map<string, Promise<readonly { id: string; model: string; displayName: string }[]>>();
+const catalogs = new Map<string, Promise<readonly CatalogModel[]>>();
 
 export function lookUpModel(sdk: PluginBrowserBbSdk, thread: { id: string; providerId: string; status: string; host: { id: string } | null }): Promise<ModelAnswer> {
   const key = `${thread.id}:${thread.status}`;
@@ -33,9 +34,11 @@ export function lookUpModel(sdk: PluginBrowserBbSdk, thread: { id: string; provi
     const names = catalog;
     pending = Promise.resolve()
       .then(() => sdk.threads.defaultExecutionOptions({ threadId: thread.id }))
-      .then(async (options) =>
-        options === null ? { model: null, reasoningLevel: null } : { model: modelDisplayName(options.model, await names), reasoningLevel: options.reasoningLevel },
-      );
+      .then(async (options) => {
+        if (options === null) return { model: null, reasoningLevel: null };
+        const catalog = await names;
+        return { model: modelDisplayName(options.model, catalog), reasoningLevel: reasoningLevelLabel(options.model, options.reasoningLevel, catalog) };
+      });
     // A failed lookup is asked again the next time a card opens.
     pending.catch(() => answers.delete(key));
     answers.set(key, pending);
