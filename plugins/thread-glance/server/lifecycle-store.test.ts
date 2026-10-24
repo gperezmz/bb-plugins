@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parkedRow, settledRow, snoozedRow } from "../shared/lifecycle";
+import { parkedRow, settledRow, snoozedRow, waitingSettleRow } from "../shared/lifecycle";
 import { MIGRATIONS } from "./database";
 import { createLifecycleStore } from "./lifecycle-store";
 import { memoryDatabase } from "./testing/fakes";
@@ -30,7 +30,20 @@ describe("the lifecycle store", () => {
   it("reads a row stored before the held-attention column was added as one with none held", () => {
     const db = memoryDatabase({ upTo: 6 });
     db.prepare("INSERT INTO thread_lifecycle (thread_id, parked_at) VALUES ('old', 5)").run();
-    db.exec(MIGRATIONS[6]!);
+    for (const statement of MIGRATIONS.slice(6)) db.exec(statement);
     expect(createLifecycleStore(db).get("old")).toEqual(parkedRow(5));
+  });
+
+  it("reads a row stored before the waiting-settle column was added as one with no settle waiting", () => {
+    const db = memoryDatabase({ upTo: 7 });
+    db.prepare("INSERT INTO thread_lifecycle (thread_id, parked_at) VALUES ('old', 5)").run();
+    for (const statement of MIGRATIONS.slice(7)) db.exec(statement);
+    expect(createLifecycleStore(db).get("old")).toEqual(parkedRow(5));
+  });
+
+  it("keeps a waiting settle, a row with no mark, across a reload", () => {
+    const db = memoryDatabase();
+    expect(createLifecycleStore(db).putMany([["t1", waitingSettleRow(7)]])).toEqual(["t1"]);
+    expect(createLifecycleStore(db).get("t1")).toEqual(waitingSettleRow(7));
   });
 });

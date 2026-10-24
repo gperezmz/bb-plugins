@@ -1,14 +1,23 @@
 // What the menu keeps of a thread, and that it keeps its identity while that is unchanged.
 import { describe, expect, it } from "vitest";
 import { makeThread, working } from "@/testing/fixtures";
-import { snoozedRow } from "@/shared/lifecycle";
+import { snoozedRow, waitingSettleRow } from "@/shared/lifecycle";
 import { menuFactsOf, shareFacts } from "./facts";
 
 describe("menu facts", () => {
   it("reads busy, woke, the shelf the row alone gives, and the branch", () => {
     const now = 10_000_000;
     const thread = makeThread({ id: "t", environment: { branchName: "feat/x" }, latestAttentionAt: 1 });
-    expect(menuFactsOf(thread, null, now)).toEqual({ busy: false, woke: false, mark: "active", branch: "feat/x", notifiable: false });
+    expect(menuFactsOf(thread, null, now)).toEqual({
+      busy: false,
+      needsYou: false,
+      waitingSettle: false,
+      woke: false,
+      mark: "active",
+      branch: "feat/x",
+      notifiable: false,
+    });
+    expect(menuFactsOf(makeThread({ id: "t", hasPendingInteraction: true }), waitingSettleRow(1), now)).toMatchObject({ needsYou: true, waitingSettle: true });
     expect(menuFactsOf(thread, snoozedRow(now + 1000, now - 5), now).mark).toBe("snoozed");
     expect(menuFactsOf(thread, snoozedRow(now - 1, now - 5), now)).toMatchObject({ woke: true, mark: "active" });
     expect(menuFactsOf(makeThread({ id: "t", ...working }), null, now).busy).toBe(true);

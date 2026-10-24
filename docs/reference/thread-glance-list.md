@@ -99,7 +99,7 @@ One rule decides busy for the buttons, the server's checks, automatic settling a
 - any activity counter is above zero: workflows, background agents, background commands, plan mode, goals;
 - its runtime is starting, active or provisioning (the runtime's display status), which includes a runtime kept alive between turns by a running monitor.
 
-A busy thread offers no Snooze, Park or Settle, and the server refuses all three.
+A busy thread offers no Snooze or Park, and the server refuses both. Settle on a busy thread, or on a tree with one in it, [waits for the tree](thread-glance-actions.md#waiting-settle), unless the thread has a question or approval of its own.
 
 A never-run thread with nothing queued is at rest, as bb's own list draws it: it can be snoozed, parked and settled, and auto-settle settles it once it has been quiet long enough. One whose first message waits to send, scheduled for later or not, is busy through that queued message but not working: it sits on Active with its Queued status, no spinner, and is left out of the Working shelf, the children chip's working count and Compact working threads.
 
@@ -159,7 +159,8 @@ With **Project colors** on, a 2 px stripe at a row's left edge shows the project
 
 ### On any row
 
-- On hover, a card that is not busy and not woke shows **Snooze** and **Settle** in the status slot.
+- On hover, a card that is not busy and not woke shows **Snooze** and **Settle** in the status slot, and a busy one **Settle** alone; a woke card, a card with a question of its own and one with a [waiting settle](thread-glance-actions.md#waiting-settle) show neither.
+- A card with a waiting settle shows **Settling** in the status slot, with a button to cancel it.
 - Unread titles are bold; read idle titles are muted.
 - The open thread's row is highlighted, and a row open in another pane is tinted.
 - The **Unpin** button shows on hover, always on touch.

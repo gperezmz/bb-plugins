@@ -4,7 +4,7 @@
 import { useMemo, useRef } from "react";
 import { useRpc } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { createLifecycleCommands, lifecycleHostOf, waitingChildTitle, type LifecycleCommands } from "@/features/thread-list";
+import { createLifecycleCommands, lifecycleHostOf, treeHasBusy, waitingChildTitle, type LifecycleCommands } from "@/features/thread-list";
 import type { RpcContract } from "@/shared/contract";
 
 export function useLifecycleCommands(threads: readonly PluginSidebarThread[]): LifecycleCommands {
@@ -18,6 +18,7 @@ export function useLifecycleCommands(threads: readonly PluginSidebarThread[]): L
           rpc,
           (id) => latest.current.find((thread) => thread.id === id) ?? null,
           (id) => waitingChildTitle(latest.current, id),
+          (id) => treeHasBusy(latest.current, id),
         ),
       ),
     [rpc],

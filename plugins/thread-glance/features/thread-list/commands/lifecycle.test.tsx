@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 // The lifecycle commands: their toasts and Undo (AC5, AC6, AC8, AC9, AC10),
-// and the refusals of a busy thread (AC7).
+// the refusals of a busy thread (AC7), and the waiting settle of a busy tree
+// (#333).
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { activeRow, parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
+import { activeRow, parkedRow, settledRow, snoozedRow, waitingSettleRow } from "@/shared/lifecycle";
 import { busyRefusal, childNeedsYouRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED } from "@/shared/messages";
 import { DAY, HOUR, makeThread, working } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
@@ -94,20 +95,23 @@ describe("Snooze (AC5)", () => {
 });
 
 describe("AC7: a busy thread", () => {
-  it("offers no hover actions on a card, and a menu action is refused at once when this window sees it busy", async () => {
+  it("offers only Settle on hover, and refuses Park and Snooze at once when this window sees it busy", async () => {
     await mount({ threads: [makeThread({ id: "a", title: "Busy one", ...working, ...fresh })] });
     expect(screen.queryByRole("button", { name: "Snooze Busy one" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Settle Busy one" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Settle Busy one" })).not.toBeNull();
     const call = vi.fn();
     const lifecycle = createLifecycleCommands(lifecycleHostOf({ call } as never, () => makeThread({ id: "a", title: "Busy one", ...working, ...fresh })));
     await lifecycle.park("a");
     await lifecycle.snooze("a", NOW + HOUR);
-    await lifecycle.settle("a");
-    expect(toasts.error.mock.calls.map((entry) => entry[0])).toEqual([
-      busyRefusal("park", "Busy one"),
-      busyRefusal("snooze", "Busy one"),
-      busyRefusal("settle", "Busy one"),
-    ]);
+    expect(toasts.error.mock.calls.map((entry) => entry[0])).toEqual([busyRefusal("park", "Busy one"), busyRefusal("snooze", "Busy one")]);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it("refuses Settle at once for a thread with a question of its own", async () => {
+    const call = vi.fn();
+    const asking = makeThread({ id: "a", title: "Asking", hasPendingInteraction: true, ...fresh });
+    await createLifecycleCommands(lifecycleHostOf({ call } as never, () => asking)).settle("a");
+    expect(toasts.error).toHaveBeenCalledWith(busyRefusal("settle", "Asking"));
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -119,6 +123,51 @@ describe("AC7: a busy thread", () => {
     expect(toasts.success).not.toHaveBeenCalled();
     expect(m.server.rows.size).toBe(0);
     expect(shelfOfRow("a")).toBe("active");
+  });
+});
+
+describe("a Settle of a busy tree waits (#333)", () => {
+  const family = () => [
+    makeThread({ id: "p", title: "Parent", ...fresh }),
+    makeThread({ id: "c", title: "Child", parentThreadId: "p", ...working, ...fresh }),
+  ];
+
+  it("toasts that it waits, with Undo, without sweeping the card away, and the card shows the mark", async () => {
+    const m = await mount({ threads: family(), server: { settleWaits: ["p"] } });
+    await settleFromCard("Parent");
+    expect(callsOf(m, "settle")).toHaveLength(1);
+    const call = toastCall("Waiting to settle");
+    expect(describing(call)).toBe("Settles once no thread in its tree is busy");
+    expect(document.querySelector('[data-thread-id="p"] [data-waiting-settle]')).not.toBeNull();
+    expect(shelfOfRow("p")).not.toBe("settled");
+    // Waiting already, the card offers no Settle on hover, and Undo takes the wait back.
+    expect(screen.queryByRole("button", { name: "Settle Parent" })).toBeNull();
+    await pressUndo(call);
+    expect(callsOf(m, "undoLifecycle")).toHaveLength(1);
+    expect(document.querySelector('[data-thread-id="p"] [data-waiting-settle]')).toBeNull();
+  });
+
+  it("shows the mark and its cancel on the slim row of a parked thread that waits to settle", async () => {
+    const m = await mount({ threads: family(), server: quiet({ rows: { p: waitingSettleRow(NOW, parkedRow(NOW - 60_000)) } }) });
+    fireEvent.click(screen.getByRole("button", { name: "Parked (1)" }));
+    await flush();
+    expect(document.querySelector('[data-thread-id="p"] [data-waiting-settle]')).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Cancel settling Parent" }));
+    });
+    expect(callsOf(m, "cancelSettle")).toHaveLength(1);
+  });
+
+  it("cancels from the card's mark, and the mark shows in a window that loads while it waits", async () => {
+    const m = await mount({ threads: family(), server: { rows: { p: waitingSettleRow(NOW) } } });
+    expect(document.querySelector('[data-thread-id="p"] [data-waiting-settle]')).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Cancel settling Parent" }));
+    });
+    await flush();
+    expect(callsOf(m, "cancelSettle").map((call) => call.input)).toEqual([{ threadId: "p" }]);
+    expect(document.querySelector('[data-thread-id="p"] [data-waiting-settle]')).toBeNull();
+    expect(shelfOfRow("p")).toBe("active");
   });
 });
 

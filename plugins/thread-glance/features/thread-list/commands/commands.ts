@@ -4,7 +4,7 @@
 // else; each runs against the store's edge when it is called.
 import { toast } from "sonner";
 import type { Shelf } from "@/shared/lifecycle";
-import { waitingChildTitle } from "../model/forest";
+import { treeHasBusy, waitingChildTitle } from "../model/forest";
 import { storedTitle } from "../model/title";
 import { SETTLED_PAGE } from "../model/list-model";
 import type { Scope } from "../model/scope";
@@ -160,6 +160,10 @@ export function createCommands(store: ListStore): Commands {
     childWaiting: (threadId) => {
       const rows = store.getState().model?.rows;
       return rows === undefined ? null : waitingChildTitle([...rows.values()].map((row) => row.thread), threadId);
+    },
+    treeBusy: (threadId) => {
+      const rows = store.getState().model?.rows;
+      return rows !== undefined && treeHasBusy([...rows.values()].map((row) => row.thread), threadId);
     },
   });
   return { ...own, ...lifecycle, ...createReorderCommands(store), ...createPortCommands(() => store.edge.rpc) };

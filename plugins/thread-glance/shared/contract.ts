@@ -106,18 +106,28 @@ export const rpcContract = defineRpcContract({
   /** Resume: returns a parked (or snoozed, or settled) thread to Active, with the active override. */
   resume: { input: threadIdSchema, output: actionOutputSchema },
   /**
-   * Settles the thread and every thread below it: refuses if any is busy,
-   * unpins the tree's pinned threads, marks each settled (manual), then
-   * Reclaims each. Keeps a snapshot in memory for `undoSettle` until `undoUntil`.
+   * Settles the thread and every thread below it: refuses while the thread or
+   * a visible thread below it has a question or approval waiting, unpins the
+   * tree's pinned threads, marks each settled (manual), then Reclaims each,
+   * keeping a snapshot in memory for `undoSettle` until `undoUntil`. While a
+   * thread in the tree is busy it leaves a waiting settle on the thread
+   * instead (`waiting` true), which settles the tree once none is busy; Undo
+   * of that is `undoLifecycle` on its changes.
    */
   settle: {
     input: threadIdSchema,
-    output: z.extend(actionOutputSchema, {
-      undoToken: z.string(),
-      /** Epoch ms after which `undoSettle` answers that the Settle can no longer be undone. */
-      undoUntil: z.number(),
-    }),
+    output: z.union([
+      z.extend(actionOutputSchema, {
+        waiting: z.literal(false),
+        undoToken: z.string(),
+        /** Epoch ms after which `undoSettle` answers that the Settle can no longer be undone. */
+        undoUntil: z.number(),
+      }),
+      z.extend(actionOutputSchema, { waiting: z.literal(true) }),
+    ]),
   },
+  /** Cancels the thread's waiting settle, leaving its tree where it is. Does nothing for a thread with none. */
+  cancelSettle: { input: threadIdSchema, output: actionOutputSchema },
   /** Undo of a Settle, from its snapshot, for each thread where nothing changed since. */
   undoSettle: {
     input: z.strictObject({ threadId: idSchema, undoToken: z.string() }),
