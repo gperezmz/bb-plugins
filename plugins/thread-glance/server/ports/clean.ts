@@ -30,7 +30,7 @@ export const SETTLE_WAIT_MS = 750;
 const READ_CONCURRENCY = 6;
 
 export interface Clean {
-  preview(projectId: string | null): Promise<PreviewCleanOutput>;
+  preview(projectIds: readonly string[]): Promise<PreviewCleanOutput>;
   run(token: string): Promise<RunCleanOutput>;
 }
 
@@ -78,9 +78,9 @@ export function createClean(deps: CleanDeps): Clean {
   }
 
   return {
-    async preview(projectId) {
+    async preview(projectIds) {
       const { eligible } = await eligibleThreads();
-      const inScope = eligible.filter((thread) => projectId === null || thread.projectId === projectId);
+      const inScope = eligible.filter((thread) => projectIds.length === 0 || projectIds.includes(thread.projectId));
       const view = inScope.length > 0 ? await engine.read({ fresh: true }) : engine.current();
 
       const terminalIds = await inBatches(inScope, READ_CONCURRENCY, terminalIdsOf);

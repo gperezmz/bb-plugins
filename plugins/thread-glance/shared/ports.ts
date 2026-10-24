@@ -132,8 +132,8 @@ export const closePortsInputSchema = z.strictObject({ threadId: idSchema, ports:
  */
 export const closePortsOutputSchema = z.strictObject({ outcome: z.enum(["requested", "partial", "none"]) });
 
-/** `previewClean`: the settled threads in the project scope (null: all projects) and what Clean would close. */
-export const previewCleanInputSchema = z.strictObject({ projectId: z.nullable(idSchema) });
+/** `previewClean`: the settled threads in the project scope (no ids: all projects) and what Clean would close. */
+export const previewCleanInputSchema = z.strictObject({ projectIds: z.array(idSchema) });
 export const previewCleanOutputSchema = z.strictObject({
   /** Single-use, valid until `expiresAt`. */
   token: z.string(),
