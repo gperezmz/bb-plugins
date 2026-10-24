@@ -342,6 +342,16 @@ export async function openShelf(page, name) {
   }
 }
 
+/** Presses Settled's "Load N more" once, waiting for the rows it adds; false when the button is not drawn. */
+async function pressLoadMore(page) {
+  const button = page.getByRole("button", { name: /^Load \d+ more$/ });
+  if ((await button.count()) === 0) return false;
+  await button.scrollIntoViewIfNeeded();
+  await button.click();
+  await sleep(400);
+  return true;
+}
+
 /** Moves the pointer onto a row, as a person hovering it does, and waits for its hover actions to show. */
 async function pointAt(page, title) {
   const link = await reveal(page, title);
@@ -1390,11 +1400,7 @@ export const verbs = {
       await capture("before", "Settled open");
       const steps = [];
       for (let i = 0; i < Number(flags.times ?? 1); i++) {
-        const button = page.getByRole("button", { name: /^Load \d+ more$/ });
-        if ((await button.count()) === 0) break;
-        await button.scrollIntoViewIfNeeded();
-        await button.click();
-        await sleep(400);
+        if (!(await pressLoadMore(page))) break;
         steps.push(await read());
         await capture(`more-${i + 1}`, "press Load more");
       }
@@ -1404,18 +1410,14 @@ export const verbs = {
 
   stillness: {
     usage:
-      "[--expand <title>] [--load-all]: open every collapsed shelf, then close and reopen each shelf in turn, scrolling its header to the middle of the view and sampling where every mounted shelf header and row is for 30 frames after each press; `moved` lists each one still moving after the first frame (a jump that slides back) with its `path`, its top before the press and at each frame, and `jumps` counts them. --load-all presses Settled's Load more until it is gone, --expand presses that row's children chip before the sweep",
+      "[--expand <title>] [--load-all]: open every collapsed shelf, then close and reopen each shelf in turn, scrolling its header to the middle of the view and sampling where every mounted shelf header, group header and row is for 30 frames after each press; `moved` lists each one still moving after the first frame (a jump that slides back) with its `path`, its top before the press and at each frame, and `jumps` counts them. --load-all presses Settled's Load more until it is gone, --expand presses that row's children chip before the sweep",
     valued: ["expand"],
     async run({ page, url, capture, flags }) {
       await ready(page, url);
       // Every shelf open first, so each toggle has rows above and below it.
       for (const name of SHELVES) if ((await page.locator(`[data-shelf="${name}"]`).count()) > 0) await openShelf(page, name);
       if (flags["load-all"]) {
-        for (let button = page.getByRole("button", { name: /^Load \d+ more$/ }); (await button.count()) > 0; ) {
-          await button.scrollIntoViewIfNeeded();
-          await button.click();
-          await sleep(400);
-        }
+        while (await pressLoadMore(page));
       }
       if (flags.expand) {
         const chip = cardOf(page, flags.expand).locator("[data-children-chip]");
@@ -1436,8 +1438,8 @@ export const verbs = {
         page.evaluate(async (shelf) => {
           const sample = () => {
             const at = {};
-            for (const el of document.querySelectorAll("[data-item-list] [data-shelf], [data-item-list] [data-row-id]")) {
-              at[el.dataset.shelf !== undefined ? `shelf:${el.dataset.shelf}` : `row:${el.dataset.rowId}`] = el.getBoundingClientRect().top;
+            for (const el of document.querySelectorAll("[data-item-list] [data-shelf], [data-item-list] [data-group-key], [data-item-list] [data-row-id]")) {
+              at[el.dataset.shelf !== undefined ? `shelf:${el.dataset.shelf}` : (el.dataset.groupKey ?? `row:${el.dataset.rowId}`)] = el.getBoundingClientRect().top;
             }
             return at;
           };
