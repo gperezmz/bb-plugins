@@ -8,9 +8,10 @@ import { useMediaQuery } from "@/components/ui/hooks/use-media-query";
 import { layoutItems } from "../model/layout";
 import type { ListItem } from "../model/list-model";
 import { REDUCED_MOTION_QUERY } from "../model/motion";
+import type { RowPlace } from "../model/reorder";
 import { keptIndexes, mountedIndexes, rangeKey, windowedNavValue, type NavTarget } from "../model/windowing";
 import { useHeights, useListStore, useRows, useSelect } from "../store/hooks";
-import { rowOffsets, slideRows } from "./reorder/slide";
+import { readRowPlaces, slideRows } from "./reorder/slide";
 import { GroupHeader, LoadMore, ShelfHeader } from "./ShelfParts";
 import { ThreadRow } from "./rows/ThreadRow";
 import { ViewTracker } from "./view-tracker";
@@ -61,15 +62,16 @@ export const ItemList = memo(function ItemList({ items, jumps }: { items: readon
     };
   }, []);
 
-  // The rows slide from where they were to where the new order puts them.
-  const offsets = useRef<Map<string, number>>(new Map());
+  // The rows slide from where they were to where the new order puts them, as
+  // far as their header did not carry them.
+  const places = useRef<Map<string, RowPlace>>(new Map());
   const rowOrder = items.map((item) => item.key).join(" ");
   const lastOrder = useRef(rowOrder);
   useLayoutEffect(() => {
     const list = root.current!;
-    if (lastOrder.current !== rowOrder) slideRows(list, offsets.current, reduced);
+    if (lastOrder.current !== rowOrder) slideRows(list, places.current, reduced);
     lastOrder.current = rowOrder;
-    offsets.current = rowOffsets(list);
+    places.current = readRowPlaces(list);
     // What is above the list, or the list's own size, may have moved the view.
     tracker.current?.update();
   });

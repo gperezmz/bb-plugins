@@ -8,7 +8,7 @@ import { WORKING_LINES } from "../model/scenes";
 import { DAY, makeThread, working } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { WorkingScene } from "./States";
-import { slideRows } from "./reorder/slide";
+import { readRowPlaces, slideRows } from "./reorder/slide";
 
 useListHarness();
 
@@ -143,32 +143,38 @@ describe("the Working scene", () => {
 describe("the slide of rows a reorder moves aside", () => {
   const container = () => {
     const root = document.createElement("div");
-    root.innerHTML = '<div data-row-id="a"></div><div data-row-id="b"></div>';
+    root.innerHTML = '<div data-shelf="active"></div><div data-row-id="a"></div><div data-row-id="b"></div>';
     document.body.append(root);
     return root;
   };
+  // Places are read from layout, which jsdom does not do.
   const place = (root: HTMLElement, tops: Record<string, number>) => {
-    for (const element of root.querySelectorAll<HTMLElement>("[data-row-id]")) {
-      element.getBoundingClientRect = () => ({ top: tops[element.dataset.rowId!]!, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
+    for (const element of root.querySelectorAll<HTMLElement>("[data-row-id], [data-shelf]")) {
+      Object.defineProperty(element, "offsetTop", { configurable: true, value: tops[element.dataset.rowId ?? `shelf:${element.dataset.shelf}`]! });
     }
-    root.getBoundingClientRect = () => ({ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
   };
 
-  it("eases each row that moved from where it was over 150 ms, and none under reduced motion", () => {
+  it("eases each row that moved under its header from where it was over 150 ms, and none under reduced motion", () => {
     const root = container();
     const animations: { id: string; keyframes: unknown; options: unknown }[] = [];
     for (const element of root.querySelectorAll<HTMLElement>("[data-row-id]")) {
       element.animate = ((keyframes: unknown, options: unknown) => void animations.push({ id: element.dataset.rowId!, keyframes, options })) as never;
     }
-    place(root, { a: 100, b: 0 });
-    slideRows(root, new Map([["a", 0], ["b", 100]]), false);
+    place(root, { "shelf:active": 0, a: 0, b: 100 });
+    const before = readRowPlaces(root);
+    place(root, { "shelf:active": 0, a: 100, b: 0 });
+    slideRows(root, before, false);
     expect(animations.map((each) => each.id)).toEqual(["a", "b"]);
     expect(animations[0]!.options).toMatchObject({ duration: 150 });
     expect(animations[0]!.keyframes).toEqual([{ transform: "translateY(-100px)" }, { transform: "translateY(0)" }]);
     animations.length = 0;
-    slideRows(root, new Map([["a", 0], ["b", 100]]), true);
+    slideRows(root, before, true);
     expect(animations).toEqual([]);
-    slideRows(root, new Map([["a", 100], ["b", 0]]), false);
+    slideRows(root, readRowPlaces(root), false);
+    expect(animations).toEqual([]);
+    // The header carried both rows down by 200 px: nothing slides.
+    place(root, { "shelf:active": 200, a: 200, b: 300 });
+    slideRows(root, before, false);
     expect(animations).toEqual([]);
   });
 });

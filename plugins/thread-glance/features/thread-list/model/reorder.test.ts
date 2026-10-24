@@ -1,6 +1,6 @@
 // The rules of reordering apart from the pointer: when a press is a drag,
-// where the dragged unit goes, how fast the list scrolls near an edge, and
-// what a keyboard move announces.
+// where the dragged unit goes, how fast the list scrolls near an edge, how far
+// a row slides, and what a keyboard move announces.
 import { describe, expect, it } from "vitest";
 import type { ReorderList } from "./list-model";
 import {
@@ -15,6 +15,9 @@ import {
   moveKeyTo,
   orderAfterReorder,
   pinNeighbours,
+  rowPlaces,
+  slideDelta,
+  type ListUnit,
 } from "./reorder";
 
 const press = { x: 100, y: 100, button: 0, pointerType: "mouse" };
@@ -104,5 +107,37 @@ describe("writes", () => {
   it("names the neighbours of a moved pin", () => {
     expect(pinNeighbours(["a", "b", "c"], "b")).toEqual({ previousThreadId: "a", nextThreadId: "c" });
     expect(pinNeighbours(["a", "b"], "a")).toEqual({ previousThreadId: null, nextThreadId: "b" });
+  });
+});
+
+describe("slideDelta", () => {
+  const header = (key: string, top: number): ListUnit => ({ kind: "header", key, top });
+  const row = (id: string, top: number): ListUnit => ({ kind: "row", id, top });
+  const delta = (before: ListUnit[], after: ListUnit[], id: string) => slideDelta(rowPlaces(before).get(id)!, rowPlaces(after).get(id)!);
+
+  it("gives no slide to rows a shelf above pushes along with their header, opening or closing", () => {
+    const open = [header("shelf:pinned", 0), row("p", 28), header("shelf:active", 100), row("a", 128), row("b", 200)];
+    const closed = [header("shelf:pinned", 0), header("shelf:active", 28), row("a", 56), row("b", 128)];
+    expect(delta(open, closed, "a")).toBe(0);
+    expect(delta(open, closed, "b")).toBe(0);
+    expect(delta(closed, open, "b")).toBe(0);
+  });
+
+  it("gives no slide to rows under a group a group above pushes along", () => {
+    const before = [header("shelf:active", 0), header("group:x", 28), row("x1", 56), header("group:y", 128), row("y1", 156)];
+    const after = [header("shelf:active", 0), header("group:x", 28), header("group:y", 56), row("y1", 84)];
+    expect(delta(before, after, "y1")).toBe(0);
+  });
+
+  it("slides a row by its move within its header, and a row under another header from where it was", () => {
+    const before = [header("shelf:active", 0), row("a", 28), row("b", 100), header("shelf:settled", 172), row("s", 200)];
+    const after = [header("shelf:active", 0), row("b", 28), header("shelf:settled", 100), row("a", 128), row("s", 160)];
+    expect(delta(before, after, "b")).toBe(72);
+    expect(delta(before, after, "a")).toBe(28 - 128);
+    expect(delta(before, after, "s")).toBe(28 - 60);
+  });
+
+  it("measures rows above the first header from the list's top", () => {
+    expect(rowPlaces([row("a", 10)]).get("a")).toEqual({ header: null, top: 10, belowHeader: 10 });
   });
 });

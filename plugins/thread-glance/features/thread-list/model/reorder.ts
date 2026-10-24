@@ -1,6 +1,6 @@
 // The rules of reordering, apart from the pointer and the DOM: when a press
-// becomes a drag, where the dragged unit goes, how fast the list scrolls, and
-// what a keyboard move announces. Pure.
+// becomes a drag, where the dragged unit goes, how fast the list scrolls, how
+// far a row slides, and what a keyboard move announces. Pure.
 import { applySubsetOrder, insertAtTop, moveByOne } from "@/shared/manual-order";
 import type { ListModel, ReorderList } from "./list-model";
 
@@ -12,6 +12,41 @@ export const AUTOSCROLL_EDGE_PX = 48;
 export const AUTOSCROLL_MAX_PX = 14;
 /** The slide of the rows a drag moves aside. */
 export const SLIDE_MS = 150;
+
+/** One of a list's children, top to bottom: a shelf or group header, or a row, with its top in px from the list's top. */
+export type ListUnit = { kind: "header"; key: string; top: number } | { kind: "row"; id: string; top: number };
+
+/** Where a row sits: under which header, its top from the list's top, and its top from that header's top. */
+export interface RowPlace {
+  header: string | null;
+  top: number;
+  belowHeader: number;
+}
+
+/** The place of each row in `units`, by row id. */
+export function rowPlaces(units: Iterable<ListUnit>): Map<string, RowPlace> {
+  const places = new Map<string, RowPlace>();
+  let header: string | null = null;
+  let headerTop = 0;
+  for (const unit of units) {
+    if (unit.kind === "header") {
+      header = unit.key;
+      headerTop = unit.top;
+    } else places.set(unit.id, { header, top: unit.top, belowHeader: unit.top - headerTop });
+  }
+  return places;
+}
+
+/**
+ * How far a row slides into its new place, in px from it: the distance it
+ * moved that its header did not carry it. A row under the same header as
+ * before slides only by its move within that header, so rows a shelf or group
+ * opening or closing pushes along move with their header and do not slide; a
+ * row now under another header slides from where it was.
+ */
+export function slideDelta(was: RowPlace, now: RowPlace): number {
+  return was.header === now.header ? was.belowHeader - now.belowHeader : was.top - now.top;
+}
 
 export interface PressStart {
   x: number;
