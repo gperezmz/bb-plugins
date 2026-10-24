@@ -11,6 +11,7 @@ import {
   withActiveSort,
   withGroupCollapsed,
   withParentExpanded,
+  withProjectPinned,
   withShelfCollapsed,
   withWorktreeCollapsed,
   isShelfCollapsed,
@@ -40,6 +41,8 @@ export interface ListCommands {
   setExpanded(parentId: string, expanded: boolean): void;
   /** Picks the project scope (empty for All projects) and keeps it for this window. */
   setScope(scope: Scope): void;
+  /** Pins a project above the list or unpins it, on this device. */
+  setProjectPinned(projectId: string, pinned: boolean): void;
   /** Shows the next page of Settled. */
   loadMoreSettled(): void;
   /** Starts renaming a row in place; the row keeps its shelf until `endRename`. */
@@ -99,6 +102,10 @@ export function createCommands(store: ListStore): Commands {
 
     setScope(scope) {
       store.feed({ scope });
+    },
+
+    setProjectPinned(projectId, pinned) {
+      store.updateDevice((device) => withProjectPinned(device, projectId, pinned));
     },
 
     loadMoreSettled() {

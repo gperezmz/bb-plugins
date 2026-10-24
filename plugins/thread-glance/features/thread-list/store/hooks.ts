@@ -8,7 +8,7 @@ import type { Settings } from "@/shared/settings";
 import type { Commands } from "../commands/commands";
 import { heightsFor, type Heights } from "../model/heights";
 import type { ListItem, ListModel, RowView, Scene } from "../model/list-model";
-import { projectsNeedingYou, type Scope } from "../model/scope";
+import { listedPins, projectsNeedingYou, type PinnedProject, type Scope } from "../model/scope";
 import { scopeIn } from "./derive";
 import { isShelfCollapsed, type ActiveSort, type DeviceState } from "../storage/device-state";
 import { listStatusOf, type ListState, type ListStore } from "./list-store";
@@ -129,6 +129,24 @@ export function useScope(): { scope: Scope; projects: readonly PluginSidebarProj
     last.current = next;
     return next;
   });
+}
+
+/** The projects pinned above the list that bb lists, in the order they were pinned. */
+export function usePinnedProjects(): readonly PinnedProject[] {
+  const store = useListStore();
+  const last = useRef<readonly PinnedProject[]>([]);
+  return useSelect(store, (state) => {
+    const pins = listedPins(state.inputs.device.pinnedProjects, state.inputs.host.projects);
+    const previous = last.current;
+    if (previous.length === pins.length && previous.every((pin, index) => pin.id === pins[index]!.id && pin.name === pins[index]!.name)) return previous;
+    last.current = pins;
+    return pins;
+  });
+}
+
+/** The ids of the projects pinned above the list, listed or not. */
+export function usePinnedProjectIds(): readonly string[] {
+  return useListSelect((state) => state.inputs.device.pinnedProjects);
 }
 
 /** A project by id, or null. */

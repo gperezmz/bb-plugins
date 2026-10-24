@@ -1,13 +1,14 @@
-// The list below the edge: the project scope, then the upper group (Pinned,
-// Active), a scene when nothing is there to do, and the lower group (Working,
-// Inactive, Snoozed, Parked, Settled), which Dock shelves to the bottom sets
-// at the bottom of the sidebar's viewport.
+// The list below the edge: the project scope and the pinned projects, then
+// the upper group (Pinned, Active), a scene when nothing is there to do, and
+// the lower group (Working, Inactive, Snoozed, Parked, Settled), which Dock
+// shelves to the bottom sets at the bottom of the sidebar's viewport.
 import { memo, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useCommands, useLowerItems, useListStatus, useScene, useSettings, useUpperItems } from "../store/hooks";
 import { Announcer } from "./Announcer";
 import { CleanDialog } from "./CleanDialog";
 import { ItemList } from "./ItemList";
+import { PinnedProjects } from "./PinnedProjects";
 import { ProjectScope } from "./ProjectScope";
 import { useReorderDrag } from "./reorder/use-reorder-drag";
 import { Scroller } from "./Scroller";
@@ -49,6 +50,7 @@ function ReadyList() {
   return (
     <div ref={root} onKeyDown={onKeyDown} data-list-ready="" data-dock={dockShelves ? "bottom" : undefined} className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <ProjectScope />
+      <PinnedProjects />
       <Announcer />
       <CleanDialog />
       {dockShelves ? (

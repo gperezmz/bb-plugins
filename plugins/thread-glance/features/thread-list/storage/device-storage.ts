@@ -11,6 +11,8 @@ export const CAPS = {
   collapsedGroups: 200,
   /** Worktree groups collapsed inside a Project-mode group. */
   collapsedWorktrees: 200,
+  /** Projects pinned above the list. */
+  pinnedProjects: 50,
   /** Lifecycle rows cached for the first draw. */
   lifecycleRows: 500,
   /** Ids of the manual order cached for the first draw. */
@@ -23,7 +25,7 @@ const PREFIX = "thread-glance:";
 const LEGACY_KEYS = ["bb.thread-glance.client.v1", "bb.thread-glance.preferences.v1"] as const;
 
 /** Keys that hold what the person set on this device; nothing evicts them. */
-export type StateKey = "collapsedShelves" | "activeSort" | "collapsedGroups" | "collapsedWorktrees" | "expandedParents" | "workingSince" | "portLinkMachine";
+export type StateKey = "collapsedShelves" | "activeSort" | "collapsedGroups" | "collapsedWorktrees" | "expandedParents" | "pinnedProjects" | "workingSince" | "portLinkMachine";
 
 /** Keys that cache what the server sends, listed least important first: the order eviction takes them in. */
 export const CACHE_KEYS = ["cache.order", "cache.appearance", "cache.rows", "cache.settings"] as const;

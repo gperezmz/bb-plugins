@@ -53,7 +53,7 @@ Thread Glance lists a child under its parent's card, so one busy parent thread d
 
 | Plugin | Where | What |
 |---|---|---|
-| Thread Glance | The plugin's key-value store on the server for the settings, and its own `<data dir>/plugins/thread-glance/data.db` for the rest; the browser's `localStorage` for shelf and group collapse, the Active sort, open child lists, the port link machine and caches, kept per device | The settings; a lifecycle row for each thread that is settled, parked or snoozed, or has an active override; the manual order; each project's colour override and uploaded icon; Clean's previews, for 2 minutes each |
+| Thread Glance | The plugin's key-value store on the server for the settings, and its own `<data dir>/plugins/thread-glance/data.db` for the rest; the browser's `localStorage` for shelf and group collapse, the Active sort, open child lists, the pinned projects, the port link machine and caches, kept per device | The settings; a lifecycle row for each thread that is settled, parked or snoozed, or has an active override; the manual order; each project's colour override and uploaded icon; Clean's previews, for 2 minutes each |
 | Thread Usage | `<data dir>/plugins/thread-usage/data.db` (SQLite) | Turn records, harness-log entries, the thread tree |
 | OpenAI-compatible inference | The plugin's key-value store on the server for the Endpoints; `<data dir>/plugins/openai-inference/host-data/` on the primary machine, readable only by bb's user, for the rest | The Endpoints, with no literal key; `keys.json`, the literal keys; `learned-fields.json`, the request fields each Endpoint refused |
 | UI Tweaks | The plugin's key-value store on the server | The text size and transcript width choices |
