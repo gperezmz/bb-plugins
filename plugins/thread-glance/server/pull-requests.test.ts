@@ -40,7 +40,7 @@ describe("reading GitHub PR Status", () => {
       env_merged: { kind: "available", state: "merged", updatedAt: Date.parse("2026-10-22T19:27:07Z") },
       env_none: { kind: "absent" },
       env_offline: { kind: "unknown" },
-      env_gone: { kind: "gone" },
+      env_gone: { kind: "no-lookup" },
     });
     expect(errors).toEqual([]);
   });
@@ -51,14 +51,14 @@ describe("reading GitHub PR Status", () => {
     expect((await pullRequests.read(["env"])).get("env")).toEqual({ kind: "unknown" });
   });
 
-  it("reads a workspace that is gone as gone, by the message GitHub PR Status 0.1.0 gives, and a reworded one as unknown", async () => {
+  it("reads a workspace that is gone as nothing left to ask, by the message GitHub PR Status 0.1.0 gives, and a reworded one as unknown", async () => {
     const { pullRequests } = fakeBb({
       answer: () => ({
         gone: CAPTURED_PULL_REQUESTS.env_gone,
         reworded: { outcome: "unavailable", message: "The workspace at /tmp/tmp.qpn5eBNR89 is gone" },
       }),
     });
-    expect(Object.fromEntries(await pullRequests.read(["gone", "reworded"]))).toEqual({ gone: { kind: "gone" }, reworded: { kind: "unknown" } });
+    expect(Object.fromEntries(await pullRequests.read(["gone", "reworded"]))).toEqual({ gone: { kind: "no-lookup" }, reworded: { kind: "unknown" } });
   });
 
   it("reads a pull request whose attention, checks, review or mergeability holds a value it does not know, since auto-settle reads only its state and time", async () => {
@@ -97,14 +97,14 @@ describe("reading GitHub PR Status", () => {
   it.each([
     ["absent", () => []],
     ["disabled", () => [{ id: "bb--github-pr-status", enabled: false }]],
-  ])("AC3: reads every environment as having no pull request when GitHub PR Status is %s", async (_case, plugins) => {
+  ])("AC3: reads every environment as nothing left to ask when GitHub PR Status is %s", async (_case, plugins) => {
     const { pullRequests } = fakeBb({
       answer: () => {
         throw new Error('HTTP 503: plugin "bb--github-pr-status" is not running (status: disabled)');
       },
       plugins,
     });
-    expect(Object.fromEntries(await pullRequests.read(["a", "b"]))).toEqual({ a: { kind: "absent" }, b: { kind: "absent" } });
+    expect(Object.fromEntries(await pullRequests.read(["a", "b"]))).toEqual({ a: { kind: "no-lookup" }, b: { kind: "no-lookup" } });
   });
 
   it.each([

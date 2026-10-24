@@ -57,8 +57,8 @@ flowchart TD
   pr -->|"closed, or merged with the merge setting on, and changed after the thread's last activity"| settle["Settle"]
   pr -->|open or draft| stay["Stays"]
   pr -->|cannot be read| nothing["Nothing changes"]
-  pr -->|"workspace gone, and auto-settled"| nothing
-  pr -->|"none, or workspace gone"| quiet{"Settle quiet threads on, and last activity older than the days setting?"}
+  pr -->|"nothing left to ask, and auto-settled"| nothing
+  pr -->|"none, or nothing left to ask"| quiet{"Settle quiet threads on, and last activity older than the days setting?"}
   quiet -->|yes| settle
   quiet -->|no| stay
 ```
@@ -66,8 +66,7 @@ flowchart TD
 - A closed pull request always counts; a merged one counts with **Settle merged pull requests** on. The pull request must have changed after the thread's last activity, so a thread you went back to after the merge is not settled over your head.
 - An open or draft pull request keeps the thread, however old, since the work is not over.
 - If GitHub PR Status cannot say, nothing changes: a wrong guess would hide a live thread. That covers a machine that is offline, `gh` not logged in, a remote not on GitHub, and an answer in a shape Thread Glance does not expect, which it also logs as an error; the next pass asks again.
-- With GitHub PR Status disabled or not installed, a thread counts as having no pull request, so only the quiet rule applies.
-- A thread whose workspace is gone counts as having no pull request, since no later pass will find one, so the quiet rule may settle it. A thread already auto-settled stays settled when its workspace goes, as when a worktree is removed after its merge.
+- With GitHub PR Status disabled or not installed, or the thread's workspace gone, nothing is left to ask, so the thread counts as having no pull request and the quiet rule may settle it. A thread already auto-settled stays settled then, as when a worktree is removed after its merge: losing the way to ask does not undo what settled it.
 - A thread with a manual mark (a manual settle, or the active override Resume and Un-settle set) is left alone, because you decided.
 - A parent settles only when its whole tree is settled or settling.
 - A pass that started under older settings is thrown away, and only one runs at a time with one more queued, so changing a setting never settles by the old one.

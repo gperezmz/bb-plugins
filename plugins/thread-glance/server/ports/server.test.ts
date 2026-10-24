@@ -49,18 +49,22 @@ function macos(): FakeSystem {
 
 /**
  * bb's GitHub PR Status plugin, as `bb.sdk.plugins` reaches it: `answer` gives
- * the rows for the environments asked, every one absent by default.
+ * the rows for the environments asked, every one absent by default, and
+ * `enabled`, read at each call, false refuses every call as bb refuses a
+ * disabled plugin.
  */
-function githubPrStatus({ answer = () => ({}), enabled = true }: { answer?: (keys: string[]) => Record<string, unknown>; enabled?: boolean } = {}) {
+function githubPrStatus(options: { answer?: (keys: string[]) => Record<string, unknown>; enabled?: boolean } = {}) {
+  const enabled = () => options.enabled ?? true;
+  const answer = options.answer ?? ((): Record<string, unknown> => ({}));
   return {
     async callRpc({ pluginId, method, input }: { pluginId: string; method: string; input: { keys: string[] } }) {
       if (pluginId !== "bb--github-pr-status" || method !== "pullRequests") throw new Error(`unexpected ${pluginId}.${method}`);
-      if (!enabled) throw new Error('HTTP 503: plugin "bb--github-pr-status" is not running (status: disabled)');
+      if (!enabled()) throw new Error('HTTP 503: plugin "bb--github-pr-status" is not running (status: disabled)');
       const rows = answer(input.keys);
       return Object.fromEntries(input.keys.map((key) => [key, rows[key] ?? { outcome: "absent" }]));
     },
     async list() {
-      return { plugins: [{ id: "bb--github-pr-status", enabled }] };
+      return { plugins: [{ id: "bb--github-pr-status", enabled: enabled() }] };
     },
   };
 }
@@ -345,6 +349,14 @@ describe("#330: auto-settle reads GitHub PR Status through the SDK", () => {
   it("AC3: settles a quiet thread when GitHub PR Status is disabled", async () => {
     const { harness } = await load(linux(), { threads: [quiet("thr_quiet", "env-quiet", 9)], pullRequests: { enabled: false } });
     expect(await harness.behavior.callRpc("runAutoSettle", {})).toEqual({ settled: ["thr_quiet"], unsettled: [] });
+  });
+
+  it("keeps a thread it settled on a merge when GitHub PR Status is then disabled", async () => {
+    const status = { answer: () => ({ "env-merged": merged() }), enabled: true };
+    const { harness } = await load(linux(), { threads: [quiet("thr_merged", "env-merged", 1)], pullRequests: status });
+    expect(await harness.behavior.callRpc("runAutoSettle", {})).toEqual({ settled: ["thr_merged"], unsettled: [] });
+    status.enabled = false;
+    expect(await harness.behavior.callRpc("runAutoSettle", {})).toEqual({ settled: [], unsettled: [] });
   });
 
   it("AC4: logs an answer out of shape to bb's log as an error and keeps the thread", async () => {

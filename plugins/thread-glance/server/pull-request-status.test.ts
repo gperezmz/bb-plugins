@@ -11,7 +11,7 @@ describe("a row", () => {
     });
     expect(statusOfRow(CAPTURED_PULL_REQUESTS.env_none)).toEqual({ status: { kind: "absent" }, mismatch: null });
     expect(statusOfRow(CAPTURED_PULL_REQUESTS.env_offline)).toEqual({ status: { kind: "unknown" }, mismatch: null });
-    expect(statusOfRow(CAPTURED_PULL_REQUESTS.env_gone)).toEqual({ status: { kind: "gone" }, mismatch: null });
+    expect(statusOfRow(CAPTURED_PULL_REQUESTS.env_gone)).toEqual({ status: { kind: "no-lookup" }, mismatch: null });
   });
 
   it("names where a row is out of shape, and a row left out", () => {
@@ -24,9 +24,9 @@ describe("a row", () => {
 });
 
 describe("a refused call", () => {
-  it("is no pull request where bb lists no GitHub PR Status or a disabled one, and a failed lookup otherwise", () => {
-    expect(statusOfRefusedCall(undefined)).toEqual({ kind: "absent" });
-    expect(statusOfRefusedCall({ enabled: false })).toEqual({ kind: "absent" });
+  it("leaves nothing to ask where bb lists no GitHub PR Status or a disabled one, and is a failed lookup otherwise", () => {
+    expect(statusOfRefusedCall(undefined)).toEqual({ kind: "no-lookup" });
+    expect(statusOfRefusedCall({ enabled: false })).toEqual({ kind: "no-lookup" });
     expect(statusOfRefusedCall({ enabled: true })).toEqual({ kind: "unknown" });
     expect(statusOfRefusedCall(null)).toEqual({ kind: "unknown" });
   });
