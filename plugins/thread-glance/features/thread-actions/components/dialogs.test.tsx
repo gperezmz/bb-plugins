@@ -90,6 +90,19 @@ describe("Snooze until (AC5)", () => {
   const snoozeButton = () => within(screen.getByRole("dialog")).getByRole("button", { name: "Snooze" });
   const setTime = (value: string) => act(() => void fireEvent.change(screen.getByLabelText("Time"), { target: { value } }));
 
+  it("names the thread under the heading by bb's ThreadTitle, and says 'this thread' for one bb does not list", () => {
+    const mentioned = makeThread({ id: "t1", title: "Subject @project:proj_a", displayTitle: "Subject Alpha" });
+    mountDialogs({ threads: [mentioned] });
+    act(() => requestSnoozePicker("t1"));
+    expect(screen.getByRole("dialog", { name: "Snooze until" }).querySelector('[data-thread-title="t1"]')?.textContent).toBe("Subject Alpha");
+    cleanup();
+    mountDialogs({ threads: [] });
+    act(() => requestSnoozePicker("t1"));
+    const dialog = screen.getByRole("dialog", { name: "Snooze until" });
+    expect(dialog.textContent).toContain("this thread");
+    expect(dialog.querySelector("[data-thread-title]")).toBeNull();
+  });
+
   it("starts on tomorrow 09:00 with a preview, and snoozes until then", async () => {
     const { calls } = open();
     expect(screen.getByRole("dialog", { name: "Snooze until" })).toBeTruthy();
@@ -156,6 +169,32 @@ describe("Parent… (AC21)", () => {
     act(() => requestParentDialog("t1"));
     expect(options()).toEqual(["None", "Alpha parent", "Beta · Other project parent"]);
     expect(screen.getAllByRole("option")[0]!.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("draws each thread's title through bb's ThreadTitle, the project's name before another project's, and the dialog's own thread under its heading", () => {
+    const mentioned = [
+      makeThread({ id: "t1", title: "Subject @project:proj_a", displayTitle: "Subject Alpha" }),
+      makeThread({ id: "p1", title: "Alpha @section:s1", displayTitle: "Alpha Backlog" }),
+      makeThread({ id: "p2", title: "Other @thread:p1", displayTitle: "Other Alpha Backlog", projectId: "proj_b" }),
+    ];
+    mountDialogs({ threads: mentioned });
+    act(() => requestParentDialog("t1"));
+    expect(screen.getByRole("dialog").querySelector('[data-thread-title="t1"]')?.textContent).toBe("Subject Alpha");
+    const [, first, second] = screen.getAllByRole("option");
+    expect(first!.querySelector('[data-thread-title="p1"]')?.textContent).toBe("Alpha Backlog");
+    expect(second!.textContent).toBe("Beta · Other Alpha Backlog");
+    expect(second!.querySelector('[data-thread-title="p2"]')?.textContent).toBe("Other Alpha Backlog");
+  });
+
+  it("shows an archived current parent, which bb does not list, by its stored title", async () => {
+    const child = makeThread({ id: "t1", title: "Subject", parentThreadId: "gone" });
+    const get = vi.fn(async () => ({ id: "gone", title: "Archived parent", titleFallback: null, projectId: "proj_a", parentThreadId: null, archivedAt: 3, createdAt: 1, updatedAt: 2, latestAttentionAt: 2 }));
+    mountDialogs({ threads: [child], sdk: { threads: { update: vi.fn(), unpin: vi.fn(), get } } });
+    act(() => requestParentDialog("t1"));
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    const parent = screen.getByRole("option", { name: "Archived parent" });
+    expect(parent.textContent).toBe("Archived parent");
+    expect(parent.querySelector("[data-thread-title]")).toBeNull();
   });
 
   it("filters by the search, keeping None", () => {

@@ -1,11 +1,11 @@
 // The thread header's way back out of a child thread: "Back to parent: <title>"
 // with the parent's mark. The title is dropped on a compact viewport.
-import { experimental_Icon as Icon, experimental_useSidebarThreads as useSidebarThreads, useBbNavigate } from "@get-bb/plugin-sdk/app";
+import { experimental_Icon as Icon, experimental_useSidebarThreads as useSidebarThreads, ThreadTitle, useBbNavigate } from "@get-bb/plugin-sdk/app";
 import type { PluginThreadHeaderActionProps } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import { useServerSettings } from "../thread-list";
 import { ChildMark, Tip } from "../thread-list";
-import { backToParentLabel, parentOf } from "./model";
+import { BACK_TO_PARENT, backToParentLabel, parentOf } from "./model";
 
 export function ParentButton({ threadId, isCompactViewport }: PluginThreadHeaderActionProps) {
   const { threads } = useSidebarThreads();
@@ -15,7 +15,7 @@ export function ParentButton({ threadId, isCompactViewport }: PluginThreadHeader
   if (parent === null) return null;
   const label = backToParentLabel(parent);
   return (
-    <Tip label={label} side="bottom">
+    <Tip label={<>{BACK_TO_PARENT}<ThreadTitle threadId={parent.id} /></>} side="bottom">
       <button
         type="button"
         aria-label={label}
@@ -27,7 +27,7 @@ export function ParentButton({ threadId, isCompactViewport }: PluginThreadHeader
       >
         <Icon name="ChevronLeft" aria-hidden className="size-3 shrink-0" />
         <ChildMark threadId={parent.id} providerId={parent.providerId} style={childIcon} />
-        {isCompactViewport ? null : <span className="truncate">{parent.displayTitle}</span>}
+        {isCompactViewport ? null : <span className="truncate"><ThreadTitle threadId={parent.id} /></span>}
       </button>
     </Tip>
   );

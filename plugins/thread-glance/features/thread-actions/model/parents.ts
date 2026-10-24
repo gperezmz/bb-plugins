@@ -19,7 +19,10 @@ export interface ParentThread {
 export interface ParentOption {
   /** The thread to make the parent, or null for None. */
   id: string | null;
+  /** What the option reads as, for matching a query. */
   label: string;
+  /** What the option says before the thread's title: the project's name for a thread of another project, else nothing. */
+  prefix: string;
   /** Whether it is the thread's current parent (None, for a thread without one). */
   checked: boolean;
 }
@@ -53,10 +56,8 @@ export function parentOptions({ thread, threads, currentParent, projectNames, qu
   if (currentParent !== null && !excluded.has(currentParent.id) && currentParent.id === thread.parentThreadId) {
     candidates.set(currentParent.id, currentParent);
   }
-  const labelOf = (candidate: ParentThread): string =>
-    candidate.projectId === thread.projectId
-      ? candidate.displayTitle
-      : `${projectNames.get(candidate.projectId) ?? "Unknown project"} · ${candidate.displayTitle}`;
+  const prefixOf = (candidate: ParentThread): string =>
+    candidate.projectId === thread.projectId ? "" : `${projectNames.get(candidate.projectId) ?? "Unknown project"} · `;
   const needle = query.trim().toLowerCase();
   const options = [...candidates.values()]
     .sort((a, b) => {
@@ -64,9 +65,12 @@ export function parentOptions({ thread, threads, currentParent, projectNames, qu
       const sameB = b.projectId === thread.projectId ? 0 : 1;
       return sameA - sameB || lastActivityAt(b) - lastActivityAt(a) || a.id.localeCompare(b.id);
     })
-    .map((candidate): ParentOption => ({ id: candidate.id, label: labelOf(candidate), checked: candidate.id === thread.parentThreadId }))
+    .map((candidate): ParentOption => {
+      const prefix = prefixOf(candidate);
+      return { id: candidate.id, label: `${prefix}${candidate.displayTitle}`, prefix, checked: candidate.id === thread.parentThreadId };
+    })
     .filter((option) => needle === "" || option.label.toLowerCase().includes(needle));
-  return [{ id: null, label: NO_PARENT_LABEL, checked: thread.parentThreadId === null }, ...options];
+  return [{ id: null, label: NO_PARENT_LABEL, prefix: "", checked: thread.parentThreadId === null }, ...options];
 }
 
 /** Why a parent cannot be chosen: it sits below the thread. */

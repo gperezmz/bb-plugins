@@ -3,7 +3,8 @@
 // settled threads in the list's project scope, runs the preview once on
 // "Clean resources", and shows what came of it. Mounted by the list, so it
 // opens wherever bb offers the list.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { experimental_useSidebarThreads as useSidebarThreads, ThreadTitle } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -88,6 +89,10 @@ function CleanContent() {
   const { state, refresh, run } = useClean();
   const view = cleanView(state);
   const { preview } = view;
+  const { threads } = useSidebarThreads();
+  const listed = new Map(threads.map((thread) => [thread.id, thread]));
+  /** A thread's title as bb draws it; the stored one for a thread bb no longer lists, which it draws nothing for. */
+  const titleOf = (threadId: string, stored: string): ReactNode => (listed.has(threadId) ? <ThreadTitle threadId={threadId} /> : stored);
   return (
     // Escape would close the dialog on a run that is going; the result would then have nowhere to show.
     <AlertDialogContent className="max-w-md" onEscapeKeyDown={(event) => !view.dismissible && event.preventDefault()}>
@@ -110,7 +115,7 @@ function CleanContent() {
               {preview.threads.map((thread) => (
                 <li key={thread.threadId} data-clean-thread={thread.threadId} className="flex items-start gap-2 rounded-md border border-border px-2.5 py-2">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{thread.title}</p>
+                    <p className="truncate font-medium">{titleOf(thread.threadId, thread.title)}</p>
                     <p className="text-xs text-muted-foreground">
                       {[thread.terminals > 0 ? terminalsText(thread.terminals) : null, thread.ports.length > 0 ? portsText(thread.ports) : null]
                         .filter((part) => part !== null)
@@ -121,7 +126,7 @@ function CleanContent() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    aria-label={`Open ${thread.title}`}
+                    aria-label={`Open ${listed.get(thread.threadId)?.displayTitle ?? thread.title}`}
                     onClick={() => {
                       commands.open(thread.threadId);
                       commands.closeClean();
@@ -146,8 +151,8 @@ function CleanContent() {
             </p>
             {stillListeningText(state.result) === null ? null : <p>{stillListeningText(state.result)}</p>}
             {state.result.issues.map((issue) => (
-              <p key={issue} className="text-[color:var(--tg-failed)]">
-                {issue}
+              <p key={`${issue.threadId} ${issue.text}`} className="text-[color:var(--tg-failed)]">
+                {titleOf(issue.threadId, issue.title)}: {issue.text}
               </p>
             ))}
           </div>
