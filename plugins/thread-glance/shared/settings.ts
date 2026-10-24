@@ -109,7 +109,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
 
 /** What each setting does and the values it takes, in the words `bb thread-glance prefs` shows. */
 export const SETTING_DESCRIPTIONS: Record<SettingKey, string> = {
-  threadDisplay: `Which Pinned, Active and Inactive threads draw as a one-line folded card: ${THREAD_DISPLAYS.join(", ")}. "full-cards" folds none, "compact-working" the working ones, "compact-all" all of them; a thread that failed or needs you stays a full card.`,
+  threadDisplay: `Which Pinned, Active and Inactive threads draw as a one-line folded card: ${THREAD_DISPLAYS.join(", ")}. "full-cards" folds none, "compact-working" the working ones, "compact-all" all of them; a thread that fails or needs you unfolds to a full card, under "compact-all" until you open it or that clears.`,
   keepPinnedAsFullCards: 'Under threadDisplay "compact-all", draw pinned threads as full cards. true or false.',
   keepWokeAsFullCards: 'Under threadDisplay "compact-all", draw a woke thread as a full card until it is opened. true or false.',
   workingShelf: "Move threads whose tree is working to their own Working shelf. true or false.",

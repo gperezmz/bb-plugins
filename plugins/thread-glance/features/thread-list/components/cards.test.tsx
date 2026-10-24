@@ -266,6 +266,43 @@ describe("AC17: the Folded card", () => {
     expect(card("q").getAttribute("data-card")).toBe("folded");
   });
 
+  it("does not count a thread open in a hidden window as opened, until the window shows again", async () => {
+    let state: DocumentVisibilityState = "hidden";
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+    try {
+      const m = await mount({
+        threads: [makeThread({ id: "q", ...fresh, ...working, indicator: "runtime" }), makeThread({ id: "other", ...fresh })],
+        server: { settings: { threadDisplay: "compact-all" } },
+        activeThreadId: "q",
+      });
+      act(() => m.host.updateThread("q", { status: "idle", runtimeStatus: "idle", hasPendingInteraction: true, indicator: "waiting-for-input" }));
+      await flush();
+      expect(localStorage.getItem(storedKeyName("seenWaits"))).toBeNull();
+      state = "visible";
+      act(() => void document.dispatchEvent(new Event("visibilitychange")));
+      await flush();
+      expect(JSON.parse(localStorage.getItem(storedKeyName("seenWaits")) ?? "[]")).toEqual(["question:q"]);
+    } finally {
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+    }
+  });
+
+  it("keeps what another window has seen when this window has bb's newer list but no frame yet", async () => {
+    const m = await mount({
+      threads: [makeThread({ id: "q", ...fresh }), makeThread({ id: "other", ...fresh })],
+      server: { settings: { threadDisplay: "compact-all" } },
+      activeThreadId: "other",
+    });
+    // bb's list reaches the store, but no frame applies it, as in a hidden window.
+    act(() => m.host.updateThread("q", { hasPendingInteraction: true, indicator: "waiting-for-input" }));
+    const key = storedKeyName("seenWaits");
+    act(() => {
+      localStorage.setItem(key, JSON.stringify(["question:q"]));
+      window.dispatchEvent(new StorageEvent("storage", { key }));
+    });
+    expect(JSON.parse(localStorage.getItem(key) ?? "[]")).toEqual(["question:q"]);
+  });
+
   it("folds a question another window on the device opened, when that window stores it", async () => {
     await mount({
       threads: [makeThread({ id: "q", ...fresh, hasPendingInteraction: true, indicator: "waiting-for-input" }), makeThread({ id: "other", ...fresh })],

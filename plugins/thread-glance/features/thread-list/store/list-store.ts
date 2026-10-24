@@ -26,7 +26,7 @@ import {
 import { CAPS, createDeviceStorage, storedKeyName, type DeviceStorage, type StorageLike } from "../storage/device-storage";
 import { readScope, windowStorage, writeScope } from "../storage/window-state";
 import { isWorking } from "@/shared/busy";
-import { startClock, type Clock } from "./clock";
+import { hidden, startClock, type Clock } from "./clock";
 import { derive, FIRST_SETTLED_SHOWN, NO_HOST, scopeIn, type HostData, type ListInputs } from "./derive";
 import { createStore, type StoreApi } from "./vanilla";
 import { createWorkingSince, type WorkingSince } from "./working-since";
@@ -152,18 +152,16 @@ export interface ListStoreOptions {
   storage?: DeviceStorage;
   /** Where this window's scope is kept; null keeps none. Defaults to the browser's session storage. */
   windowStorage?: StorageLike | null;
-  /** Whether the person can see this window, so its open thread counts as opened. Defaults to the document being visible and focused. */
-  isLooking?: () => boolean;
 }
 
-function documentLooking(): boolean {
-  return typeof document === "undefined" || (document.visibilityState !== "hidden" && document.hasFocus());
+/** Whether the person can see this window, so its open thread counts as opened: visible and focused. */
+function looking(): boolean {
+  return !hidden() && (typeof document === "undefined" || document.hasFocus());
 }
 
 export function createListStore(options: ListStoreOptions = {}): ListStore {
   const storage = options.storage ?? createDeviceStorage();
   const sessionStorage = options.windowStorage === undefined ? windowStorage() : options.windowStorage;
-  const isLooking = options.isLooking ?? documentLooking;
   pluginData.hydrate(storage);
   const inputs: ListInputs = {
     host: NO_HOST,
@@ -202,7 +200,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
   // comes, frame or not, so one that clears while no frame runs is forgotten before the next arrives.
   const updateSeen = (threads: HostData["threads"], activeThreadId: string | null): ReadonlySet<string> => {
     const stored = readSeenWaits(storage);
-    const next = seenWaits(stored, threads, activeThreadId !== null && isLooking() ? activeThreadId : null);
+    const next = seenWaits(stored, threads, activeThreadId !== null && looking() ? activeThreadId : null);
     if (next !== stored) writeSeenWaits(storage, next);
     return next;
   };
@@ -218,7 +216,9 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
   const commit = (next: ListInputs) => {
     // A project scope drops the projects that are gone, and the window keeps what is left.
     const scope = scopeIn(next);
-    const seen = next.host.status === "ready" ? updateSeen(next.host.threads, next.activeThreadId) : next.seenWaits;
+    // bb's latest list, which a hidden window holds before any frame applies it: an older one would
+    // undo what another window has just seen, and the two would write over each other.
+    const seen = host.status === "ready" ? updateSeen(host.threads, next.activeThreadId) : next.seenWaits;
     const shared = share(next.seenWaits, seen);
     const checked = scope === next.scope && shared === next.seenWaits ? next : { ...next, scope, seenWaits: shared };
     const current = api.getState();
@@ -363,7 +363,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       mounted = true;
       attached.add(store);
       const unfollow = pluginData.subscribe(onData);
-      // Coming back to the window opens its open thread; another window's opening reaches this one.
+      // Coming back to the window counts its open thread as opened; another window's change reaches this one.
       const recheckSeen = () => commit(api.getState().inputs);
       // Another window's change of the pins reaches this one, so its next change builds on them rather than over them.
       const onStorage = (event: StorageEvent) => {
@@ -377,7 +377,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       };
       globalThis.addEventListener("storage", onStorage);
       globalThis.addEventListener("focus", recheckSeen);
-      globalThis.document?.addEventListener("visibilitychange", recheckSeen);
+      if (typeof document !== "undefined") document.addEventListener("visibilitychange", recheckSeen);
       // What changed between the store's creation and its mount.
       store.feed(dataInputs);
       const requests = waiting;
@@ -395,7 +395,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
         unfollow();
         globalThis.removeEventListener("storage", onStorage);
         globalThis.removeEventListener("focus", recheckSeen);
-        globalThis.document?.removeEventListener("visibilitychange", recheckSeen);
+        if (typeof document !== "undefined") document.removeEventListener("visibilitychange", recheckSeen);
         clock?.stop();
         clock = null;
         if (frame !== null) frames.cancel(frame);
