@@ -143,7 +143,9 @@ describe("the page (AC26)", () => {
 
   it("shows the defaults, ranges and choices of the five groups with settings", () => {
     openPage(fakeServer());
-    expect(toggle("Compact working threads").getAttribute("aria-checked")).toBe("false");
+    const display = screen.getByLabelText("Thread display") as HTMLSelectElement;
+    expect(display.value).toBe("full-cards");
+    expect([...display.options].map((option) => option.text)).toEqual(["Full cards", "Compact working threads", "Compact all threads"]);
     expect(toggle("Working shelf").getAttribute("aria-checked")).toBe("false");
     expect(toggle("Inactive shelf").getAttribute("aria-checked")).toBe("true");
     expect(toggle("Dock shelves to the bottom").getAttribute("aria-checked")).toBe("false");
@@ -302,6 +304,25 @@ describe("autosave", () => {
     expect(screen.getByRole("alert").textContent).toBe("Use at least 1 day.");
   });
 
+  it("shows the keep options only under Compact all threads, and sends Thread display and them as named", async () => {
+    fakeTimers();
+    const server = fakeServer();
+    openPage(server);
+    expect(screen.queryByText("Keep pinned as full cards")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Thread display"), { target: { value: "compact-working" } });
+    expect(screen.queryByText("Keep pinned as full cards")).toBeNull();
+    expect(screen.queryByText("Keep woke as full cards")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Thread display"), { target: { value: "compact-all" } });
+    expect(toggle("Keep pinned as full cards").getAttribute("aria-checked")).toBe("false");
+    expect(toggle("Keep woke as full cards").getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle("Keep pinned as full cards"));
+    fireEvent.click(toggle("Keep woke as full cards"));
+    await settle(SAVE_DELAY_MS);
+    expect(writes(server)).toEqual([{ patch: { threadDisplay: "compact-all", keepPinnedAsFullCards: true, keepWokeAsFullCards: true } }]);
+    fireEvent.change(screen.getByLabelText("Thread display"), { target: { value: "full-cards" } });
+    expect(screen.queryByText("Keep pinned as full cards")).toBeNull();
+  });
+
   it("sends the choice fields as they are named", async () => {
     fakeTimers();
     const server = fakeServer();
@@ -318,20 +339,20 @@ describe("autosave", () => {
     fakeTimers();
     const server = fakeServer();
     const view = openPage(server);
-    fireEvent.click(toggle("Compact working threads"));
+    fireEvent.click(toggle("Dock shelves to the bottom"));
     expect(writes(server)).toEqual([]);
     await act(async () => void view.unmount());
-    expect(writes(server)).toEqual([{ patch: { compactWorkingThreads: true } }]);
-    expect(pluginData.settings().compactWorkingThreads).toBe(true);
+    expect(writes(server)).toEqual([{ patch: { dockShelves: true } }]);
+    expect(pluginData.settings().dockShelves).toBe(true);
   });
 
   it("sends a pending save when the page is hidden", async () => {
     fakeTimers();
     const server = fakeServer();
     openPage(server);
-    fireEvent.click(toggle("Compact working threads"));
+    fireEvent.click(toggle("Dock shelves to the bottom"));
     await act(async () => void window.dispatchEvent(new Event("pagehide")));
-    expect(writes(server)).toEqual([{ patch: { compactWorkingThreads: true } }]);
+    expect(writes(server)).toEqual([{ patch: { dockShelves: true } }]);
   });
 
   it("runs one save at a time: an edit made during a save goes after it", async () => {

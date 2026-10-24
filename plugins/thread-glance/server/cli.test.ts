@@ -25,10 +25,10 @@ async function refusal(harness: Harness, argv: string[]) {
 }
 
 describe("bb thread-glance prefs", () => {
-  it("lists all 16 keys with a value and a description, as lines and as JSON", async () => {
+  it("lists all 18 keys with a value and a description, as lines and as JSON", async () => {
     const harness = await load();
     const lines = (await harness.behavior.runCli(["prefs", "list"])).stdout?.split("\n") ?? [];
-    expect(SETTING_KEYS).toHaveLength(16);
+    expect(SETTING_KEYS).toHaveLength(18);
     expect(lines.map((line) => line.split("\t")[0])).toEqual(SETTING_KEYS);
     for (const line of lines) {
       const [key, value, description] = line.split("\t");
@@ -67,6 +67,42 @@ describe("bb thread-glance prefs", () => {
     expect((await harness.behavior.runCli(["prefs", "set", "groupByWorktree", "true"])).stdout).toBe("groupByWorktree = true");
     expect((await stored(harness)).groupByWorktree).toBe(true);
     expect((await refusal(harness, ["prefs", "set", "groupByWorktree", "yes"])).code).toBe("invalid_preference_value");
+  });
+
+  it("reads and sets all three Thread display values and both keep options", async () => {
+    const harness = await load();
+    expect((await harness.behavior.runCli(["prefs", "get", "threadDisplay"])).stdout).toBe('"full-cards"');
+    for (const value of ["compact-working", "compact-all", "full-cards"]) {
+      expect((await harness.behavior.runCli(["prefs", "set", "threadDisplay", value])).stdout).toBe(`threadDisplay = "${value}"`);
+      expect((await stored(harness)).threadDisplay).toBe(value);
+    }
+    for (const key of ["keepPinnedAsFullCards", "keepWokeAsFullCards"]) {
+      expect((await harness.behavior.runCli(["prefs", "get", key])).stdout).toBe("false");
+      expect((await harness.behavior.runCli(["prefs", "set", key, "true"])).stdout).toBe(`${key} = true`);
+    }
+    expect(await stored(harness)).toMatchObject({ keepPinnedAsFullCards: true, keepWokeAsFullCards: true });
+    expect((await refusal(harness, ["prefs", "set", "threadDisplay", "compact"])).code).toBe("invalid_preference_value");
+    expect((await refusal(harness, ["prefs", "get", "compactWorkingThreads"])).code).toBe("unknown_preference");
+  });
+
+  it("reads a record from before Thread display with compacting working threads on as Compact working threads", async () => {
+    const host = createFakePluginHost({ pluginId: "thread-glance" });
+    await host.bb.storage.kv.set("settings", { ...DEFAULT_SETTINGS, threadDisplay: undefined, compactWorkingThreads: true });
+    await plugin(host.bb);
+    expect((await host.harness.behavior.runCli(["prefs", "get", "threadDisplay"])).stdout).toBe('"compact-working"');
+    await host.harness.behavior.runCli(["prefs", "set", "hoursBeforeInactive", "12"]);
+    expect(await host.bb.storage.kv.get("settings")).toMatchObject({ threadDisplay: "compact-working", hoursBeforeInactive: 12, compactWorkingThreads: true });
+  });
+
+  it("stores the old compactWorkingThreads switch beside Thread display, so an earlier release still reads it", async () => {
+    const host = createFakePluginHost({ pluginId: "thread-glance" });
+    await plugin(host.bb);
+    const run = (value: string) => host.harness.behavior.runCli(["prefs", "set", "threadDisplay", value]);
+    await run("compact-all");
+    expect(await host.bb.storage.kv.get("settings")).toMatchObject({ threadDisplay: "compact-all", compactWorkingThreads: true });
+    await run("full-cards");
+    expect(await host.bb.storage.kv.get("settings")).toMatchObject({ threadDisplay: "full-cards", compactWorkingThreads: false });
+    expect(JSON.parse((await host.harness.behavior.runCli(["prefs", "list", "--json"])).stdout ?? "")).not.toHaveProperty("compactWorkingThreads");
   });
 
   it("reads a bare word as a string and a JSON word as its value", async () => {

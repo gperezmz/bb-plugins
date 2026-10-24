@@ -121,8 +121,8 @@ A snoozed thread that is [lifted](#lifted-threads) and has not otherwise woken s
 
 | Row | Lines | Used on |
 |---|---|---|
-| [Full card](#full-card) | 3 | Pinned, Active, Inactive, and a working thread unless it is folded |
-| [Folded card](#folded-card) | 1 | Working, and working threads while **Compact working threads** is on |
+| [Full card](#full-card) | 3 | Pinned, Active and Inactive, unless [Thread display](thread-glance-settings.md#sidebar-layout) folds the thread |
+| [Folded card](#folded-card) | 1 | Working, and the Pinned, Active and Inactive threads **Thread display** folds |
 | [Slim row](#slim-row) | 1, 32 px | Snoozed, Parked, Settled |
 
 Heights are kept in one place, [`model/heights.ts`](../../plugins/thread-glance/features/thread-list/model/heights.ts).
@@ -135,7 +135,13 @@ Heights are kept in one place, [`model/heights.ts`](../../plugins/thread-glance/
 
 ### Folded card
 
-One line: project name · title, then the children chip, the [port indicator](#workspace-ports), an unpin button and the live status with elapsed time or the age. It unfolds to a full card when the work ends, fails or needs you.
+One line: project name · title, then the children chip, the [port indicator](#workspace-ports), an unpin button and the live status with elapsed time or the age. The branch, pull request and harness are in the [hover card](#hover-card).
+
+| Thread display | Folds | Unfolds to a full card |
+|---|---|---|
+| Full cards | Nothing on Pinned, Active or Inactive | |
+| Compact working threads | Working threads | When the work ends, fails or needs you |
+| Compact all threads | Every Pinned, Active and Inactive thread, unless **Keep pinned as full cards** or **Keep woke as full cards** keeps it full | When a turn fails, until you open it; when it asks you something, until you open it or the question clears (a question you opened stays folded in that window only); when a queued message fails to send, until it sends or is deleted, opened or not; while a question waits below it, until the question clears. A turn ending leaves it folded |
 
 ### Slim row
 

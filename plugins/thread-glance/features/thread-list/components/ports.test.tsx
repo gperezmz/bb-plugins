@@ -87,7 +87,7 @@ describe("AC1: the port indicator and the Hover card's list", () => {
   it("shows it on the folded card, and lists the container's name for a port only Docker reports, without Stop", async () => {
     const m = await mount({
       threads: [makeThread({ id: "a", title: "Dev server", status: "active", runtimeStatus: "active", ...fresh })],
-      server: { settings: { compactWorkingThreads: true }, ports: ports([listener({ process: null, pid: null, startedAt: null, container: "web-1" })]) },
+      server: { settings: { threadDisplay: "compact-working" }, ports: ports([listener({ process: null, pid: null, startedAt: null, container: "web-1" })]) },
     });
     await waitFor(() => expect(m.server.calls.some((call) => call.method === "ports")).toBe(true));
     await flush();

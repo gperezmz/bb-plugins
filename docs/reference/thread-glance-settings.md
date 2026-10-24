@@ -24,7 +24,9 @@ The settings live in a bb settings section with a navigation strip and six group
 
 | Setting | Default | Does |
 |---|---|---|
-| Compact working threads (Experimental) | Off | Draws working threads as a [folded card](thread-glance-list.md#folded-card) |
+| Thread display (Experimental) | Full cards | Which Pinned, Active and Inactive threads draw as a [folded card](thread-glance-list.md#folded-card): **Full cards** folds none, **Compact working threads** the working ones, **Compact all threads** all of them. A thread that fails or needs you unfolds to a full card, under **Compact all threads** until you open it or the question clears, and after a send failure until the message sends or is deleted ([folded card](thread-glance-list.md#folded-card)). Settings saved before Thread display, with the old **Compact working threads** switch on, read as **Compact working threads** |
+| Keep pinned as full cards | Off | Shown under **Compact all threads** only. Draws pinned threads as full cards |
+| Keep woke as full cards | Off | Shown under **Compact all threads** only. Draws a [woke](thread-glance-list.md#woke) thread as a full card until you open it |
 | Working shelf (Experimental) | Off | Moves threads whose tree is working to the [Working shelf](thread-glance-list.md#shelves) |
 | Inactive shelf | On | Moves threads with no activity for **Hours before inactive** to the Inactive shelf |
 | Hours before inactive | 6 | Whole hours, 1 to 720 |

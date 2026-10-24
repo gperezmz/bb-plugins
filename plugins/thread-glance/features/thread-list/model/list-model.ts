@@ -150,6 +150,8 @@ export interface ModelInputs {
   draftIds: ReadonlySet<string>;
   /** Threads other split panes show. */
   openElsewhereIds: ReadonlySet<string>;
+  /** Threads opened while their own question waits, until it clears (see `questionsSeen`). */
+  seenQuestionIds: ReadonlySet<string>;
   now: number;
   compact: boolean;
   /** Settled rows shown. */
@@ -179,12 +181,43 @@ function shelfVisible(shelf: Shelf, settings: Settings): boolean {
   return shelf !== "working" || settings.workingShelf;
 }
 
-/** The card a top-level row is drawn as. */
-export function cardKindOf(shelf: Shelf, thread: PluginSidebarThread, tree: TreeSignals, compactWorking: boolean): CardKind {
+/** What Thread display says of the cards. */
+export type CardSettings = Pick<Settings, "threadDisplay" | "keepPinnedAsFullCards" | "keepWokeAsFullCards">;
+
+/** What a card's kind reads of the thread beyond bb's own record of it. */
+export interface CardFacts {
+  tree: TreeSignals;
+  /** Why a snoozed thread shows as woke, or null. */
+  woke: WakeReason | null;
+  /** You have opened the thread while its own question waits (see `questionsSeen`). */
+  questionSeen: boolean;
+  /** A question or approval waits below the thread, at any depth. */
+  questionBelow: boolean;
+}
+
+/**
+ * The card a top-level row is drawn as. On Pinned, Active and Inactive a
+ * thread that failed or needs you is a Full card whatever Thread display says.
+ * Under Compact all threads it folds again once you open it or its question
+ * clears, but a queued send failure keeps it full until the message sends or
+ * is deleted, since opening does not clear it; a question waiting below it
+ * keeps it full until that question clears.
+ */
+export function cardKindOf(shelf: Shelf, thread: PluginSidebarThread, facts: CardFacts, display: CardSettings): CardKind {
+  const { tree, woke } = facts;
   if (shelf === "snoozed" || shelf === "parked" || shelf === "settled") return "slim";
   if (shelf === "working") return "folded";
-  const working = isWorking(thread) && !thread.hasPendingInteraction && !isFailed(thread) && !tree.needsYou;
-  return compactWorking && working ? "folded" : "full";
+  switch (display.threadDisplay) {
+    case "full-cards":
+      return "full";
+    case "compact-working":
+      return isWorking(thread) && !thread.hasPendingInteraction && !isFailed(thread) && !tree.needsYou ? "folded" : "full";
+    case "compact-all":
+      if (isFailed(thread) || (thread.hasPendingInteraction && !facts.questionSeen) || facts.questionBelow) return "full";
+      if (display.keepPinnedAsFullCards && shelf === "pinned") return "full";
+      if (display.keepWokeAsFullCards && woke !== null) return "full";
+      return "folded";
+  }
 }
 
 /** Whether a child shows in a closed child list for having a status. */
@@ -339,13 +372,15 @@ export function buildModel(inputs: ModelInputs): ListModel {
     const tree = forest.treeOf.get(thread.id) ?? { working: isWorking(thread), needsYou: thread.hasPendingInteraction };
     const children = forest.children.get(thread.id) ?? null;
     const isExpanded = children !== null && expanded.has(thread.id);
+    const woke = shelf === "active" ? wakeReason(lifecycle[thread.id], thread, now, lifted.has(thread.id)) : null;
+    const facts: CardFacts = { tree, woke, questionSeen: inputs.seenQuestionIds.has(thread.id), questionBelow: (children?.counts.needsYou ?? 0) > 0 };
     rows.set(thread.id, {
       id: thread.id,
       thread,
       shelf,
-      card: shelf === null ? "slim" : cardKindOf(shelf, thread, tree, settings.compactWorkingThreads),
+      card: shelf === null ? "slim" : cardKindOf(shelf, thread, facts, settings),
       lifecycle: lifecycle[thread.id] ?? null,
-      woke: shelf === "active" ? wakeReason(lifecycle[thread.id], thread, now, lifted.has(thread.id)) : null,
+      woke,
       tree,
       grouped: shelf === "active" && groupedProjects.has(thread.projectId),
       inWorktree: shelf === "active" && worktreeThreadIds.has(thread.id),

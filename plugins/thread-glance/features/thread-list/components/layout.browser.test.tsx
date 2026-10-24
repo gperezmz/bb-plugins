@@ -147,7 +147,7 @@ describe("the cards' lines", () => {
     makeThread({ id: "work", title: "Working one", ...at(6), status: "active", runtimeStatus: "active", indicator: "runtime" }),
     makeThread({ id: "pk", title: "Parked one", ...old }),
   ];
-  const draw = (compactWorkingThreads: boolean) => render(threads, { rows: { pk: parkedRow(NOW - 86_400_000) }, settings: { compactWorkingThreads, inactiveShelf: false }, order: ["full", "work", "pk"] });
+  const draw = (compactWorking: boolean) => render(threads, { rows: { pk: parkedRow(NOW - 86_400_000) }, settings: { threadDisplay: compactWorking ? "compact-working" : "full-cards", inactiveShelf: false }, order: ["full", "work", "pk"] });
   const card = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"]`)!;
 
   it("fits each card in its height and its width, truncating what is too long", async () => {
@@ -180,7 +180,7 @@ describe("the cards' lines", () => {
       makeThread({ id: "k2", title: "kid two", parentThreadId: "boss", ...at(4) }),
       makeThread({ id: "k3", title: "kid three", parentThreadId: "boss", ...at(3) }),
     ];
-    await render(family, { settings: { compactWorkingThreads: true, inactiveShelf: false } }, {}, 600, 255);
+    await render(family, { settings: { threadDisplay: "compact-working", inactiveShelf: false } }, {}, 600, 255);
     const boss = card("boss");
     expect(boss.dataset.card).toBe("folded");
     expect(boss.querySelector("[data-children-chip]")).not.toBeNull();
@@ -329,7 +329,7 @@ describe("the jump hints", () => {
       makeThread({ id: "full", title: "Full card", ...at(5) }),
       makeThread({ id: "work", title: "A folded card with a long title", ...at(6), status: "active", runtimeStatus: "active", indicator: "runtime" }),
     ];
-    await render(threads, { settings: { compactWorkingThreads: true, inactiveShelf: false } }, {}, 600, 255, { full: long, work: long });
+    await render(threads, { settings: { threadDisplay: "compact-working", inactiveShelf: false } }, {}, 600, 255, { full: long, work: long });
     for (const id of ["full", "work"]) {
       const slot = card(id).querySelector<HTMLElement>("[data-status-slot]")!;
       const hint = slot.querySelector<HTMLElement>("[data-jump-hint]")!;
@@ -428,7 +428,7 @@ describe("a card takes the pointer", () => {
     makeThread({ id: "pk", title: "Parked one", ...old }),
   ];
   const draw = async () => {
-    await render(threads, { rows: { pk: parkedRow(NOW - 86_400_000) }, settings: { compactWorkingThreads: true, inactiveShelf: false }, order: ["full", "work", "pk"] });
+    await render(threads, { rows: { pk: parkedRow(NOW - 86_400_000) }, settings: { threadDisplay: "compact-working", inactiveShelf: false }, order: ["full", "work", "pk"] });
     screen.getByRole("button", { name: "Parked (1)" }).click();
     await waitFor(() => expect(document.querySelector('[data-card="slim"]')).not.toBeNull());
     await frames();

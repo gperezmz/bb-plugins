@@ -12,6 +12,7 @@ export const STRIPE_CHOICES = ["full-and-collapsed", "full", "grouped"] as const
 export const CHILD_ORDERS = ["created", "activity"] as const;
 export const CHILD_DIRECTIONS = ["oldest", "newest"] as const;
 export const CHILD_ICONS = ["colour-circle", "provider-icon"] as const;
+export const THREAD_DISPLAYS = ["full-cards", "compact-working", "compact-all"] as const;
 
 const hoursSchema = z
   .int({ error: "Enter a whole number of hours." })
@@ -37,8 +38,12 @@ const choice = <const T extends readonly [string, ...string[]]>(values: T) =>
 
 /** Each setting's schema, keyed by the setting's name. */
 const fields = {
-  /** Working threads draw as a Folded card. */
-  compactWorkingThreads: flag,
+  /** Which Pinned, Active and Inactive threads draw as a Folded card: none, the working ones, or all. */
+  threadDisplay: choice(THREAD_DISPLAYS),
+  /** Under Compact all threads, pinned threads stay Full cards. */
+  keepPinnedAsFullCards: flag,
+  /** Under Compact all threads, a woke thread stays a Full card until it is opened. */
+  keepWokeAsFullCards: flag,
   /** The Working shelf. */
   workingShelf: flag,
   /** The Inactive shelf. */
@@ -82,7 +87,9 @@ export type SettingsPatch = z.infer<typeof settingsPatchSchema>;
 
 /** The settings of a fresh install, and what the app shows until the server's arrive. Inactive is on. */
 export const DEFAULT_SETTINGS: Settings = Object.freeze({
-  compactWorkingThreads: false,
+  threadDisplay: "full-cards",
+  keepPinnedAsFullCards: false,
+  keepWokeAsFullCards: false,
   workingShelf: false,
   inactiveShelf: true,
   hoursBeforeInactive: 6,
@@ -102,7 +109,9 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
 
 /** What each setting does and the values it takes, in the words `bb thread-glance prefs` shows. */
 export const SETTING_DESCRIPTIONS: Record<SettingKey, string> = {
-  compactWorkingThreads: "Draw working threads as a one-line folded card. true or false.",
+  threadDisplay: `Which Pinned, Active and Inactive threads draw as a one-line folded card: ${THREAD_DISPLAYS.join(", ")}. "full-cards" folds none, "compact-working" the working ones, "compact-all" all of them; a thread that fails or needs you unfolds to a full card, under "compact-all" until you open it or the question clears, and after a send failure until the message sends or is deleted.`,
+  keepPinnedAsFullCards: 'Under threadDisplay "compact-all", draw pinned threads as full cards. true or false.',
+  keepWokeAsFullCards: 'Under threadDisplay "compact-all", draw a woke thread as a full card until it is opened. true or false.',
   workingShelf: "Move threads whose tree is working to their own Working shelf. true or false.",
   inactiveShelf: "Move threads with no activity for a while to the Inactive shelf. true or false.",
   hoursBeforeInactive: `Hours without activity before a thread moves to the Inactive shelf. A whole number, ${HOURS_BEFORE_INACTIVE_RANGE.min} to ${HOURS_BEFORE_INACTIVE_RANGE.max}.`,
@@ -161,6 +170,8 @@ export function validateSettingsPatch(input: unknown): SettingsValidation {
 /**
  * The record a stored value means. Reading is tolerant: a field that is
  * missing or invalid is its default, so one bad field cannot lose the rest.
+ * A record from before Thread display, which has no `threadDisplay`, reads its
+ * `compactWorkingThreads` switch as Compact working threads when it was on.
  */
 export function readSettings(stored: unknown): Settings {
   if (stored === null || typeof stored !== "object" || Array.isArray(stored)) return { ...DEFAULT_SETTINGS };
@@ -169,6 +180,7 @@ export function readSettings(stored: unknown): Settings {
   for (const key of SETTING_KEYS) {
     if (key in record && fieldError(key, record[key]) === null) settings[key] = record[key];
   }
+  if (!("threadDisplay" in record) && record.compactWorkingThreads === true) settings.threadDisplay = "compact-working";
   return settings as Settings;
 }
 

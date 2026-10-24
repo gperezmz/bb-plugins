@@ -42,6 +42,16 @@ export interface SettingsStore {
   reset(keys?: readonly SettingKey[]): Promise<{ settings: Settings; changed: SettingKey[] }>;
 }
 
+/**
+ * The record as stored: the settings, and the `compactWorkingThreads` switch
+ * Thread display replaced, on while threads fold, so a release from before
+ * Thread display still reads its choice. `readSettings` ignores the switch
+ * once `threadDisplay` is stored.
+ */
+function stored(settings: Settings): Settings & { compactWorkingThreads: boolean } {
+  return { ...settings, compactWorkingThreads: settings.threadDisplay !== "full-cards" };
+}
+
 export function createSettingsStore(bb: Pick<BbPluginApi, "storage">): SettingsStore {
   const { kv } = bb.storage;
   let cache: Settings | null = null;
@@ -55,7 +65,7 @@ export function createSettingsStore(bb: Pick<BbPluginApi, "storage">): SettingsS
     const before = await read();
     const changed = SETTING_KEYS.filter((key) => before[key] !== next[key]);
     if (changed.length > 0) {
-      await kv.set(SETTINGS_KEY, next);
+      await kv.set(SETTINGS_KEY, stored(next));
       cache = next;
     }
     return { settings: next, changed };
