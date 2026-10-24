@@ -44,5 +44,5 @@ export { ChildMark } from "./components/rows/ChildMark";
 export { StatusView } from "./components/rows/StatusView";
 export { Tip } from "./components/rows/Tip";
 export { ageLabel, statusSlot, type StatusSlot } from "./model/status-slot";
-export { childComparator, isListed } from "./model/forest";
+export { childComparator, isListed, waitingChildTitle } from "./model/forest";
 export { chipMarkIds } from "./model/children-chip";

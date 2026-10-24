@@ -14,9 +14,10 @@ import {
   sameRow,
   settledRow,
   snoozedRow,
+  waitingBelow,
   type LifecycleRow,
 } from "../shared/lifecycle";
-import { busyRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED, THREAD_GONE, TREE_CHANGED, type GatedAction } from "../shared/messages";
+import { busyRefusal, childNeedsYouRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED, THREAD_GONE, TREE_CHANGED, type GatedAction } from "../shared/messages";
 import { EMPTY_RECLAIM, reclaimNote, type ReclaimReport } from "../shared/reclaim-note";
 import { snoozeTimeError } from "../shared/snooze";
 import { ancestorIds, descendantIds, treeIds } from "../shared/thread-tree";
@@ -101,17 +102,30 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
 
   const byIdOf = (snapshot: readonly ServerThread[]) => new Map(snapshot.map((thread) => [thread.id, thread]));
 
-  async function requireThread(threadId: string): Promise<{ thread: ServerThread; byId: Map<string, ServerThread> }> {
-    const byId = byIdOf(await threads.snapshot());
-    const thread = byId.get(threadId);
+  async function requireThread(threadId: string): Promise<{ thread: ServerThread; snapshot: ServerThread[] }> {
+    const snapshot = await threads.snapshot();
+    const thread = byIdOf(snapshot).get(threadId);
     if (thread === undefined) throw new Error(THREAD_GONE);
-    return { thread, byId };
+    return { thread, snapshot };
   }
 
   /** Refuses the action when a thread is busy. */
   function refuseBusy(action: GatedAction, tree: readonly ServerThread[]): void {
     const busy = tree.find((thread) => isBusy(thread));
     if (busy !== undefined) throw new Error(busyRefusal(action, busy.title));
+  }
+
+  /**
+   * Refuses the action when a question or approval waits below the thread, at
+   * any depth. Hidden threads are bb's helpers, which no one answers from the
+   * list, so they neither wait for the user nor pass a chain on.
+   */
+  function refuseChildWaiting(action: GatedAction, snapshot: readonly ServerThread[], threadId: string): void {
+    const waiting = waitingBelow(
+      snapshot.filter((thread) => !thread.hidden),
+      threadId,
+    );
+    if (waiting !== undefined) throw new Error(childNeedsYouRefusal(action, waiting.title));
   }
 
   /** Writes the rows, passes the touched threads to `changed`, and returns the changes. */
@@ -141,8 +155,9 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
     const changes = await change(async (changed) => {
       const at = now();
       check?.(at);
-      const { thread } = await requireThread(threadId);
+      const { thread, snapshot } = await requireThread(threadId);
       refuseBusy(action, [thread]);
+      refuseChildWaiting(action, snapshot, threadId);
       if (thread.isPinned) await threads.unpin(threadId);
       return write([[threadId, row(at), thread.isPinned]], changed);
     });
@@ -234,6 +249,7 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
         if (!firstById.has(threadId)) throw new Error(THREAD_GONE);
         const ids = treeIds(first, threadId);
         const tree = ids.map((id) => firstById.get(id)!);
+        refuseChildWaiting("settle", first, threadId);
         refuseBusy("settle", tree);
         const rowsBefore = new Map(ids.map((id) => [id, lifecycle.get(id)]));
         const unpinned: ServerThread[] = [];
@@ -260,6 +276,7 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
               );
             });
           if (!same) throw new Error(TREE_CHANGED);
+          refuseChildWaiting("settle", second, threadId);
           refuseBusy("settle", current);
           const at = (lastSettleAt = Math.max(now(), lastSettleAt + 1));
           const order = pinnedInOrder(first);

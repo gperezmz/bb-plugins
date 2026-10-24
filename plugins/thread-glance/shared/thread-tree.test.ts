@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ancestorIds, descendantIds, treeIds } from "./thread-tree";
+import { ancestorIds, descendantIds, idsAbove, treeIds } from "./thread-tree";
 
 const threads = [
   { id: "root", parentThreadId: null },
@@ -28,5 +28,17 @@ describe("thread tree", () => {
     ]);
     expect(ancestorIds(loop, "x")).toEqual(["y"]);
     expect(descendantIds([...loop.values()], "x")).toEqual(["y"]);
+  });
+
+  it("finds the threads with a picked thread below them, at any depth, not the picked thread itself", () => {
+    expect([...idsAbove(threads, (thread) => thread.id === "a1")].sort()).toEqual(["a", "root"]);
+    expect([...idsAbove(threads, (thread) => thread.id === "root")]).toEqual([]);
+    expect([...idsAbove(threads, () => false)]).toEqual([]);
+  });
+
+  it("ends a chain at a parent it does not list", () => {
+    const orphan = [{ id: "c", parentThreadId: "gone" }];
+    expect([...idsAbove(orphan, () => true)]).toEqual(["gone"]);
+    expect([...idsAbove([], () => true)]).toEqual([]);
   });
 });

@@ -3,7 +3,7 @@
 // and the thread is not pinned; every other visible thread in scope is a root,
 // a row of its own. Pure.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { lastActivityAt, treeSignals, type TreeSignals } from "@/shared/lifecycle";
+import { lastActivityAt, treeSignals, waitingBelow, type TreeSignals } from "@/shared/lifecycle";
 import type { Settings } from "@/shared/settings";
 
 /** Most steps up a parent chain before it is taken for a cycle. */
@@ -12,6 +12,11 @@ const MAX_DEPTH = 64;
 /** Threads that make it onto the list: not archived and not hidden. */
 export function isListed(thread: PluginSidebarThread): boolean {
   return !thread.isArchived && thread.archivedAt === null && !thread.isHidden;
+}
+
+/** The title of a thread below `threadId` with a question or approval pending, or null; unlisted threads neither wait nor pass a chain on. */
+export function waitingChildTitle(threads: readonly PluginSidebarThread[], threadId: string): string | null {
+  return waitingBelow(threads.filter(isListed), threadId)?.displayTitle ?? null;
 }
 
 /** A thread that failed: its last turn ended in an error nobody has read, or a queued message failed to send. */

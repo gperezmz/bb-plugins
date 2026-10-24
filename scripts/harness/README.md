@@ -19,6 +19,8 @@ scripts/harness/run-env.test.sh
 - `Reply with exactly "X"` gets `X`.
 - `[fake: background]` gets a Bash `sleep 1800` run in the background.
 - `[fake: fail]` gets HTTP 400, so the turn ends in error.
+- `[fake: ask]` gets an AskUserQuestion, so the turn waits on a question until it is answered (`bb thread interactions answer`).
+- `[fake: approve]` gets a Bash `touch fake-approval.txt`, which waits on an approval in a turn not run in full permission mode (`bb thread tell --permission-mode accept-edits`).
 - `[fake: hold=N]` delays its answer by N seconds.
 - `/compact`, or a request for a summary, gets a short summary.
 - Anything else, including a tool result, gets `OK`.
