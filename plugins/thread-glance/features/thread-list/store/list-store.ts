@@ -10,16 +10,16 @@ import type { BbNavigate, PluginBrowserBbSdk, PluginRpcClient } from "@get-bb/pl
 import type { RpcContract } from "@/shared/contract";
 import { pluginData, type DataChange } from "../sync";
 import type { ListModel } from "../model/list-model";
-import { resolveScope } from "../model/scope";
 import {
   readDeviceState,
   saveDeviceState,
   type DeviceState,
 } from "../storage/device-state";
-import { createDeviceStorage, type DeviceStorage } from "../storage/device-storage";
+import { createDeviceStorage, type DeviceStorage, type StorageLike } from "../storage/device-storage";
+import { readScope, windowStorage, writeScope } from "../storage/window-state";
 import { isWorking } from "@/shared/busy";
 import { startClock, type Clock } from "./clock";
-import { derive, FIRST_SETTLED_SHOWN, NO_HOST, type HostData, type ListInputs } from "./derive";
+import { derive, FIRST_SETTLED_SHOWN, NO_HOST, scopeIn, type HostData, type ListInputs } from "./derive";
 import { createStore, type StoreApi } from "./vanilla";
 import { createWorkingSince, type WorkingSince } from "./working-since";
 
@@ -141,10 +141,13 @@ function dataInputs(): Pick<ListInputs, "lifecycle" | "rowsReady" | "settings" |
 
 export interface ListStoreOptions {
   storage?: DeviceStorage;
+  /** Where this window's scope is kept; null keeps none. Defaults to the browser's session storage. */
+  windowStorage?: StorageLike | null;
 }
 
 export function createListStore(options: ListStoreOptions = {}): ListStore {
   const storage = options.storage ?? createDeviceStorage();
+  const sessionStorage = options.windowStorage === undefined ? windowStorage() : options.windowStorage;
   pluginData.hydrate(storage);
   const inputs: ListInputs = {
     host: NO_HOST,
@@ -154,7 +157,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
     pendingOrder: null,
     pinnedOverride: null,
     device: readDeviceState(storage),
-    scopeId: null,
+    scope: readScope(sessionStorage),
     now: Date.now(),
     settledShown: FIRST_SETTLED_SHOWN,
     frozenShelves: new Map(),
@@ -183,10 +186,11 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
 
   /** Runs the derive step over `next` and publishes the result. */
   const commit = (next: ListInputs) => {
-    // A project scope whose project is gone is All projects again.
-    const scopeId = resolveScope(next.scopeId, next.host.projects);
-    const checked = scopeId === next.scopeId ? next : { ...next, scopeId };
+    // A project scope drops the projects that are gone, and the window keeps what is left.
+    const scope = scopeIn(next);
+    const checked = scope === next.scope ? next : { ...next, scope };
     const current = api.getState();
+    if (checked.scope !== current.inputs.scope) writeScope(sessionStorage, checked.scope);
     const model = derive(checked, current.model);
     // A thread deleted or archived mid-drag ends the drag.
     const { dragging } = current.ui;

@@ -69,7 +69,7 @@ describe("AC8: the dialog", () => {
   it("previews the settled threads for all projects, with terminals, ports and the warnings", async () => {
     const m = await mount({ threads, server: { rows, answers: { previewClean: preview() } } });
     await openDialog(m);
-    expect(calls(m, "previewClean").map((call) => call.input)).toEqual([{ projectId: null }]);
+    expect(calls(m, "previewClean").map((call) => call.input)).toEqual([{ projectIds: [] }]);
     const box = dialog();
     expect(within(box).getByText("Clean settled resources?")).toBeTruthy();
     const first = box.querySelector<HTMLElement>("[data-clean-thread=a]")!;
@@ -88,7 +88,19 @@ describe("AC8: the dialog", () => {
     fireEvent.click(within(await screen.findByRole("listbox", { name: "Projects" })).getByRole("option", { name: "Beta" }));
     await flush();
     await openDialog(m);
-    expect(calls(m, "previewClean").map((call) => call.input)).toEqual([{ projectId: "proj_b" }]);
+    expect(calls(m, "previewClean").map((call) => call.input)).toEqual([{ projectIds: ["proj_b"] }]);
+  });
+
+  it("previews every project in a scope of several", async () => {
+    const m = await mount({ threads, server: { rows, answers: { previewClean: preview() } } });
+    fireEvent.click(screen.getByRole("button", { name: /Project scope/ }));
+    const listbox = await screen.findByRole("listbox", { name: "Projects" });
+    fireEvent.click(within(listbox).getByRole("option", { name: "Beta" }));
+    fireEvent.click(within(listbox).getByRole("option", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await flush();
+    await openDialog(m);
+    expect(calls(m, "previewClean").map((call) => call.input)).toEqual([{ projectIds: ["proj_b", "proj_a"] }]);
   });
 
   it("opens a thread from its Open button and closes the dialog", async () => {

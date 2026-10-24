@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useSnoozePickerRequests } from "../commands/snooze-picker-request";
+import { parkedRow, settledRow } from "@/shared/lifecycle";
 import { makeThread } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { forgetModelLookups } from "../sync/model-lookup";
@@ -240,36 +241,51 @@ describe("AC19: Jump hints", () => {
     Array.from({ length: 11 }, (_, index) =>
       makeThread({ id: `t${index}`, title: `T${index}`, createdAt: NOW - (index + 1) * MIN, updatedAt: NOW - (index + 1) * MIN, latestAttentionAt: NOW - (index + 1) * MIN }),
     );
-  const hints = () => [...document.querySelectorAll("[data-jump-hint]")].map((hint) => hint.textContent);
-  const press = (type: "keydown" | "keyup", init: KeyboardEventInit) => act(() => void window.dispatchEvent(new KeyboardEvent(type, init)));
+  const hints = () =>
+    [...document.querySelectorAll("[data-jump-hint]")].map((hint) => ({ row: hint.closest<HTMLElement>("[data-thread-id]")?.dataset.threadId, label: hint.textContent }));
+  const card = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"]`)!;
+  const shortcut = (n: number) => ({ label: `Ctrl + Shift + ${n}`, ariaKeyshortcuts: `Control+Shift+${n}` });
 
-  it("labels the first nine rows after Ctrl is held alone for 700 ms, and clears on release", async () => {
-    await mount({ threads: threads(), server: { order: threads().map((thread) => thread.id) } });
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    press("keydown", { key: "Control", ctrlKey: true });
-    await act(async () => void (await vi.advanceTimersByTimeAsync(699)));
-    expect(hints()).toEqual([]);
-    await act(async () => void (await vi.advanceTimersByTimeAsync(1)));
-    expect(hints()).toEqual(Array.from({ length: 9 }, (_, index) => `Ctrl + ${index + 1}`));
-    press("keyup", { key: "Control" });
-    expect(hints()).toEqual([]);
+  it("shows on each row the jump key bb assigned it, in bb's label", async () => {
+    // bb numbers the rows; a key it gives out of list order is still drawn on its own row.
+    await mount({ threads: threads(), server: { order: threads().map((thread) => thread.id) }, slot: { sidebarShortcuts: { t0: shortcut(1), t1: shortcut(2), t3: shortcut(3) } } });
+    expect(hints()).toEqual([
+      { row: "t0", label: "Ctrl + Shift + 1" },
+      { row: "t1", label: "Ctrl + Shift + 2" },
+      { row: "t3", label: "Ctrl + Shift + 3" },
+    ]);
+    // The hint stands in place of the status; a row bb gave no key keeps its status.
+    for (const id of ["t0", "t1", "t3"]) expect(card(id).querySelector("[data-status]")).toBeNull();
+    expect(card("t2").querySelector("[data-status]")).not.toBeNull();
   });
 
-  it("cancels on another key, on Shift and on blur", async () => {
+  it("shows bb's label in place of a Slim row's status and shelf label", async () => {
+    const DAY = 24 * 60 * MIN;
+    const old = { createdAt: NOW - 5 * DAY, updatedAt: NOW - 4 * DAY, latestAttentionAt: NOW - 4 * DAY };
+    await mount({
+      threads: [makeThread({ id: "parked", ...old }), makeThread({ id: "settled", ...old }), makeThread({ id: "settled2", ...old })],
+      server: { rows: { parked: parkedRow(NOW - 2 * DAY), settled: settledRow(NOW - DAY, "manual"), settled2: settledRow(NOW - DAY, "manual") }, settings: { inactiveShelf: false } },
+      slot: { sidebarShortcuts: { parked: shortcut(1), settled: shortcut(2) } },
+    });
+    for (const label of ["Parked (1)", "Settled (2)"]) fireEvent.click(screen.getByRole("button", { name: label }));
+    await flush();
+    expect(hints()).toEqual([
+      { row: "parked", label: "Ctrl + Shift + 1" },
+      { row: "settled", label: "Ctrl + Shift + 2" },
+    ]);
+    expect(card("parked").getAttribute("data-card")).toBe("slim");
+    expect(card("parked").textContent).not.toContain("2d");
+    expect(card("settled").querySelector("[data-status]")).toBeNull();
+    expect(card("settled2").querySelector("[data-status]")).not.toBeNull();
+  });
+
+  it("shows none while bb assigns none, whatever key is held", async () => {
     await mount({ threads: threads() });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    press("keydown", { key: "Control", ctrlKey: true });
-    press("keydown", { key: "a", ctrlKey: true });
+    act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Control", ctrlKey: true })));
     await act(async () => void (await vi.advanceTimersByTimeAsync(1_000)));
     expect(hints()).toEqual([]);
-    press("keydown", { key: "Control", ctrlKey: true, shiftKey: true });
-    await act(async () => void (await vi.advanceTimersByTimeAsync(1_000)));
-    expect(hints()).toEqual([]);
-    press("keydown", { key: "Control", ctrlKey: true });
-    await act(async () => void (await vi.advanceTimersByTimeAsync(700)));
-    expect(hints()).toHaveLength(9);
-    act(() => void window.dispatchEvent(new Event("blur")));
-    expect(hints()).toEqual([]);
+    expect(document.querySelectorAll("[data-status-slot]").length).toBeGreaterThan(0);
   });
 });
 
