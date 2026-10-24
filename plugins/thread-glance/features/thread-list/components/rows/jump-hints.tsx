@@ -1,8 +1,8 @@
 // Jump hints on the rows: while bb's jump modifier is held, each row bb gave a
 // jump key shows that key in place of its status. bb decides which rows get
-// keys and when the hints show, numbering the visible row links in DOM order,
-// and labels each from its keybindings, so a hint names the chord that opens
-// its row.
+// keys and when the hints show, numbering the row links the list has mounted
+// in DOM order, and labels each from its keybindings, so a hint names the
+// chord that opens its row.
 import { useSidebarThreadShortcut } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 
