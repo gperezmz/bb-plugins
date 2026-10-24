@@ -4,6 +4,9 @@ import {
   activeRow,
   clearStaleMark,
   clearStaleMarks,
+  EMPTY_ROW,
+  heldIds,
+  holdAttention,
   hasManualMark,
   hasMark,
   isEmptyRow,
@@ -177,6 +180,60 @@ describe("a question waiting below (lifted)", () => {
     expect(waitingBelow(tree, "kid")?.id).toBe("grandkid");
     expect(waitingBelow(tree, "grandkid")).toBeUndefined();
     expect(waitingBelow(tree, "other")).toBeUndefined();
+  });
+});
+
+describe("attention a waiting question holds back", () => {
+  const parked = parkedRow(NOW - 10 * HOUR);
+  const held = (until: number) => ({ ...parked, heldAttentionAt: until });
+
+  it("sets aside the attention a marked row is behind, and only that", () => {
+    expect(holdAttention(parked, NOW - 20 * HOUR)).toBe(parked);
+    expect(holdAttention(parked, NOW - HOUR)).toEqual(held(NOW - HOUR));
+    expect(holdAttention(held(NOW - HOUR), NOW - 2 * HOUR)).toEqual(held(NOW - HOUR));
+    expect(holdAttention(held(NOW - HOUR), NOW)).toEqual(held(NOW));
+    expect(holdAttention(activeRow(), NOW)).toEqual(activeRow());
+  });
+
+  it("keeps a parked or settled thread on its shelf through held attention, and not through later attention", () => {
+    const row = held(NOW - HOUR);
+    expect(markShelf(row, thread({ latestAttentionAt: NOW - HOUR }), NOW)).toBe("parked");
+    expect(markShelf(row, thread({ latestAttentionAt: NOW - 30 * 60_000 }), NOW)).toBe("active");
+    const settled = { ...settledRow(NOW - 10 * HOUR, "manual"), heldAttentionAt: NOW - HOUR };
+    expect(markShelf(settled, thread({ latestAttentionAt: NOW - HOUR }), NOW)).toBe("settled");
+    expect(staleMark(settled, thread({ latestAttentionAt: NOW - HOUR }))).toBeNull();
+    expect(staleMark(settled, thread({ latestAttentionAt: NOW }))).toBe("settled");
+    expect(clearStaleMark(row, thread({ latestAttentionAt: NOW - HOUR }))).toBeNull();
+  });
+
+  it("keeps a snoozed thread asleep through held attention, so it returns to Snoozed with its wake time", () => {
+    const row = { ...snoozedRow(NOW + 5 * HOUR, NOW - 3 * HOUR), heldAttentionAt: NOW - HOUR };
+    expect(wakeReason(row, thread({ latestAttentionAt: NOW - HOUR }), NOW)).toBeNull();
+    expect(markShelf(row, thread({ latestAttentionAt: NOW - HOUR }), NOW)).toBe("snoozed");
+    expect(wakeReason(row, thread({ latestAttentionAt: NOW }), NOW)).toBe("attention");
+  });
+
+  it("holds only marked rows whose thread has a question waiting below and none on itself", () => {
+    const tree = [
+      { id: "root", parentThreadId: null, ...thread() },
+      { id: "kid", parentThreadId: "root", ...thread({ hasPendingInteraction: true }) },
+      { id: "own", parentThreadId: null, ...thread({ hasPendingInteraction: true }) },
+      { id: "own-kid", parentThreadId: "own", ...thread({ hasPendingInteraction: true }) },
+      { id: "plain", parentThreadId: null, ...thread() },
+    ];
+    const rows = new Map([
+      ["root", parked],
+      ["own", parked],
+      ["plain", parked],
+      ["kid", parked],
+      ["unmarked", activeRow()],
+    ]);
+    expect([...heldIds(rows, tree)]).toEqual(["root"]);
+  });
+
+  it("compares and empties rows by their marks, a held attention being none", () => {
+    expect(sameRow(parked, held(1))).toBe(false);
+    expect(isEmptyRow({ ...EMPTY_ROW, heldAttentionAt: 5 })).toBe(true);
   });
 });
 

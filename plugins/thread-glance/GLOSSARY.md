@@ -47,7 +47,7 @@ The state of a thread back from a snooze, at its wake time or on new attention, 
 _Avoid_: Awake, unsnoozed
 
 **Lifted thread**:
-A thread with a question or approval waiting on a thread below it, at any depth. It sits on Active, cannot be snoozed, parked or settled, and goes back to its shelf with its lifecycle row unchanged once no such question waits, answered or not.
+A thread with a question or approval waiting on a thread below it, at any depth. It sits on Active, cannot be snoozed, parked or settled, and goes back to its shelf with its lifecycle row unchanged once no such question waits, answered or not; turns in its tree leave its mark alone meanwhile.
 _Avoid_: Surfaced thread, raised thread
 
 **Parked thread**:

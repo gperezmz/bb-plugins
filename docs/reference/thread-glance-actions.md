@@ -86,7 +86,7 @@ After a park, snooze or settle, and only while the thread is still unpinned, not
 
 The note joins "Agent session stopped", "closed N terminals nobody used" and "N terminals left running" with " · ", for example "Agent session stopped · closed 1 terminal nobody used · 1 terminal left running". It is shown in the toast.
 
-When a thread is archived from any bb menu, its runtime and its idle children's runtimes are stopped; a working child is left alone. When a child thread is created or starts a turn, its parked, snoozed or settled ancestors are reopened to Active.
+When a thread is archived from any bb menu, its runtime and its idle children's runtimes are stopped; a working child is left alone. When a child thread is created or starts a turn, its parked, snoozed or settled ancestors are reopened to Active, except those [lifted](thread-glance-list.md#lifted-threads) by a question waiting below them.
 
 ## Ports
 

@@ -125,6 +125,19 @@ describe("a question waiting below a root", () => {
     expect(late.rows.get("root")!.woke).toBe("time");
   });
 
+  it("returns a root to its shelf once the question is answered, though its thread had attention while it waited", () => {
+    const quiet = family({ hasPendingInteraction: false });
+    const threads = [makeThread({ id: "root", createdAt: NOW - 10 * HOUR, updatedAt: NOW - HOUR, latestAttentionAt: NOW - HOUR }), ...quiet.slice(1)];
+    const hold = (row: LifecycleRow) => ({ ...row, heldAttentionAt: NOW - HOUR });
+    const lifecycle = { root: hold(parkedRow(NOW - 5 * HOUR)) };
+    expect(buildModel(inputs({ threads, lifecycle })).shelves.parked).toEqual(["root"]);
+    expect(buildModel(inputs({ threads, lifecycle: { root: parkedRow(NOW - 5 * HOUR) } })).shelves.parked).toEqual([]);
+    const settled = { root: hold(settledRow(NOW - 5 * HOUR, "manual")) };
+    expect(buildModel(inputs({ threads, lifecycle: settled })).shelves.settled).toEqual(["root"]);
+    const snoozed = { root: hold(snoozedRow(NOW + 5 * HOUR, NOW - 5 * HOUR)) };
+    expect(buildModel(inputs({ threads, lifecycle: snoozed })).shelves.snoozed).toEqual(["root"]);
+  });
+
   it("counts an approval below a pinned child, and not a question of an archived or hidden thread", () => {
     const lifecycle = { root: away().parked };
     const pinnedAsker = family({ hasPendingInteraction: true, isPinned: true, pinnedAt: NOW });

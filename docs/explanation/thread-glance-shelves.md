@@ -29,7 +29,7 @@ Each verb answers a different question, and only the first two need you to name 
 
 Parking and settling have no timer. What ends them is new **attention**: bb's own signal that a turn ended or a question arrived. Comparing it with the moment you parked or settled means a reply you were waiting for brings the thread back without anyone watching a clock, and the same reply cannot be missed by a thread that "came back" too early. Attention also clears the mark, so a thread that returns and then goes quiet is not carried back to Parked or Settled by a stale mark, and a later [automatic settle](#automatic-settle) may take it again.
 
-A question waiting below a thread, at any depth, brings it back as well, whatever you put it away with, and keeps it there while the question waits: a parent you parked on purpose should not hide a child that needs you. The thread is then **lifted**. Nothing is written for the lift, so when the question is gone the thread falls back to its shelf with the row it had, and its park time or wake time are the ones you set, [unless something else cleared the mark meanwhile](../reference/thread-glance-list.md#lifted-threads).
+A question waiting below a thread, at any depth, brings it back as well, whatever you put it away with, and keeps it there while the question waits: a parent you parked on purpose should not hide a child that needs you. The thread is then **lifted**. Nothing is written for the lift, so when the question is gone the thread falls back to its shelf with the row it had, and its park time or wake time are the ones you set, because the turns that the question itself starts in its tree are held back from the mark while it waits ([the rule and where it ends](../reference/thread-glance-list.md#lifted-threads)).
 
 A snooze brings the thread back at its time. The thread then shows as **woke**, in bold, until you open or dismiss it: a wake you did not see should not look like any other active thread. The marker is derived from the same row in every window, so a reload or a second window shows the same thing.
 
@@ -45,7 +45,7 @@ The buttons, the server's checks, automatic settle and Reclaim all ask the same 
 
 A thread tree is one piece of work: a parent's children are its workers. Settling the parent while a child works would hide work in progress, so a Settle covers the whole tree below the thread and fails if any thread in it is busy. It marks each thread, so the settled children are not listed under a live parent. Un-settle goes the other way: it reopens the thread's ancestors, so a thread you bring back is not left under a parent that is still settled.
 
-The same holds when a child is created or starts a turn: its parked, snoozed or settled ancestors are reopened to Active, since a parent waiting for a child's work is not at rest.
+The same holds when a child is created or starts a turn: its parked, snoozed or settled ancestors are reopened to Active, since a parent waiting for a child's work is not at rest. The one exception is a question waiting below an ancestor: the parent is already [lifted](../reference/thread-glance-list.md#lifted-threads), and reopening it would throw away the shelf it should go back to, so while the question waits, turns in the tree leave its mark alone.
 
 ## Automatic settle
 

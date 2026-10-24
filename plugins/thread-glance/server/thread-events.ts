@@ -7,9 +7,9 @@ import type { ArchivedThreads } from "./archived";
 import type { ChangeRecords } from "./actions";
 import type { LifecycleStore } from "./lifecycle-store";
 import type { OrderStore } from "./order-store";
-import { clearStaleRows } from "./reconcile";
+import { clearStaleRows, holdRows } from "./reconcile";
 import type { ThreadGateway } from "./threads";
-import { hasMark } from "../shared/lifecycle";
+import { hasMark, heldIds, type LifecycleRow } from "../shared/lifecycle";
 
 /** The part of bb's thread payload the handlers read. */
 export interface EventThread {
@@ -58,27 +58,46 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
     deps.orderChanged();
   };
 
-  /** Clears the parked, snoozed or settled mark of each ancestor of the thread whose parent is `parentId`. */
-  async function reopenAncestors(parentId: string | null): Promise<string[]> {
-    if (![...lifecycle.all().values()].some(hasMark)) return [];
-    const reopen: [string, null][] = [];
+  /** The ids above the thread whose parent is `parentId`, nearest first, as far as bb knows the parents. */
+  async function ancestorsFrom(parentId: string | null): Promise<string[]> {
+    const found: string[] = [];
     const seen = new Set<string>();
     for (let id = parentId; id !== null && id !== undefined && !seen.has(id) && seen.size < MAX_ANCESTOR_DEPTH; ) {
       seen.add(id);
-      const row = lifecycle.get(id);
-      if (hasMark(row)) {
-        reopen.push([id, null]);
-      }
-      id = await threads.parentOf(id).catch(() => undefined) ?? null;
+      found.push(id);
+      id = (await threads.parentOf(id).catch(() => undefined)) ?? null;
     }
-    return lifecycle.putMany(reopen);
+    return found;
+  }
+
+  /**
+   * Sets aside the attention the marked threads among `ids` have while a
+   * question waits below them, and returns those threads, which a turn in
+   * their tree must not reopen. `thread` is the thread the event is about, with
+   * the attention it carries.
+   */
+  async function holdWhileAsked(ids: readonly string[], thread: EventThread, changed: (threadIds: Iterable<string>) => void): Promise<Set<string>> {
+    const marked = new Map(ids.flatMap((id): [string, LifecycleRow][] => (hasMark(lifecycle.get(id)) ? [[id, lifecycle.get(id)!]] : [])));
+    if (marked.size === 0) return new Set();
+    const visible = (await threads.snapshot())
+      .filter((listed) => !listed.hidden)
+      .map((listed) => (listed.id === thread.id ? { ...listed, latestAttentionAt: Math.max(listed.latestAttentionAt, thread.latestAttentionAt) } : listed));
+    changed(lifecycle.putMany(holdRows(marked, visible)));
+    return heldIds(marked, visible);
+  }
+
+  /** Clears the parked, snoozed or settled mark of each of `ancestors` that carries one and is not held. */
+  function reopen(ancestors: readonly string[], held: ReadonlySet<string>): string[] {
+    return lifecycle.putMany(ancestors.filter((id) => hasMark(lifecycle.get(id)) && !held.has(id)).map((id): [string, null] => [id, null]));
   }
 
   return {
     created: (thread) =>
       deps.change(async (changed) => {
         addToOrder(thread);
-        changed(await reopenAncestors(thread.parentThreadId));
+        if (![...lifecycle.all().values()].some(hasMark)) return;
+        const ancestors = await ancestorsFrom(thread.parentThreadId);
+        changed(reopen(ancestors, await holdWhileAsked(ancestors, thread, changed)));
       }),
 
     active: (thread) =>
@@ -86,12 +105,15 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
         const row = lifecycle.get(thread.id);
         // The active override lasts until the thread next starts a turn.
         if (row?.activeOverride) changed(lifecycle.putMany([[thread.id, { ...row, activeOverride: false }]]));
+        const ancestors = [...lifecycle.all().values()].some(hasMark) ? await ancestorsFrom(thread.parentThreadId) : [];
+        const held = await holdWhileAsked([thread.id, ...ancestors], thread, changed);
         changed(clearStaleRows(lifecycle, new Map([[thread.id, thread]])));
-        changed(await reopenAncestors(thread.parentThreadId));
+        changed(reopen(ancestors, held));
       }),
 
     attention: (thread) =>
       deps.change(async (changed) => {
+        await holdWhileAsked([thread.id], thread, changed);
         changed(clearStaleRows(lifecycle, new Map([[thread.id, thread]])));
       }),
 
