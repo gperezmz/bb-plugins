@@ -4,7 +4,7 @@
 // and settles the tree once no thread in it is busy, or ends the settle where
 // `waitingSettleVerdict` says. The module names no SDK: bb is reached through
 // `ThreadGateway`.
-import { hasQueuedMessage } from "../shared/busy";
+import { hasQueuedMessage, isTurnInFlight } from "../shared/busy";
 import { isWaitingSettle, settledRow, withoutWaitingSettle, type LifecycleRow } from "../shared/lifecycle";
 import { treeIds } from "../shared/thread-tree";
 import { waitingSettleVerdict, type TurnRecord, type WaitingSettleVerdict } from "../shared/waiting-settle";
@@ -41,10 +41,10 @@ export interface WaitingSettles {
   /**
    * Looks at every waiting settle now: settles each tree that has been idle
    * for `IDLE_GRACE_MS`, unpinning it first, and ends each settle that a pin,
-   * a question, a turn of the user's or a failure ended. `event` names a
-   * thread whose recorded turns are read at once rather than only before a
-   * landing. Checks run one at a time, and those asked for while one waits to
-   * start share it.
+   * a question, a turn of the user's or a failure ended. The recorded turns of
+   * `event`'s thread and of each thread with a turn in flight are read at
+   * once, the rest only before a landing. Checks run one at a time, and those
+   * asked for while one waits to start share it.
    */
   check(event?: WaitingSettleEvent): Promise<void>;
   /** `check` without waiting for it; a failure is logged. */
@@ -139,7 +139,14 @@ export function createWaitingSettles(deps: WaitingSettlesDeps): WaitingSettles {
       (event.turns ?? []).filter((turn) => !(turn.kind === "requested" && turn.byUser && spawning(event.threadId))),
     );
     let verdict = waitingSettleVerdict(tree, since, reported);
-    const toRead = [...new Set(touched.filter((event) => event.turns === undefined).map((event) => event.threadId))];
+    // A message the user sends to a thread mid-turn is steered into that turn, which bb records but announces with no
+    // event, so every check reads the turns of the threads with one in flight beside those an event named.
+    const toRead = [
+      ...new Set([
+        ...touched.filter((event) => event.turns === undefined).map((event) => event.threadId),
+        ...tree.filter((thread) => isTurnInFlight(thread)).map((thread) => thread.id),
+      ]),
+    ];
     if (verdict.kind === "wait" && toRead.length > 0) {
       const turns = await turnsOf(rootId, toRead, since);
       if (turns !== null) verdict = waitingSettleVerdict(tree, since, [...reported, ...turns]);

@@ -96,6 +96,12 @@ describe("a waiting settle", () => {
     expect(lifecycle.get("parent")?.settledKind).toBe("manual");
   });
 
+  it("ends on a message the user steered into a thread mid-turn, which no event announces, at the next check", async () => {
+    fake.turns.set("child", [{ kind: "requested", at: SINCE + 10, byUser: true }]);
+    await waiting.check();
+    expect(lifecycle.get("parent")).toBeNull();
+  });
+
   it("ends at once on a message the user sent into the tree, read from the turns bb recorded", async () => {
     fake.turns.set("child", [{ kind: "requested", at: SINCE + 10, byUser: true }]);
     await waiting.check({ threadId: "child" });

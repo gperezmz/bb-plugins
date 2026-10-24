@@ -166,11 +166,13 @@ describe("what a pass decides", () => {
     expect(lifecycle.get("override")).toEqual(activeRow());
   });
 
-  it("leaves a quiet parent with a waiting settle to it, though its child works", async () => {
-    const { autoSettle, lifecycle } = setup([idleFor("parent", 9), idleFor("child", 9, { parentThreadId: "parent", status: "active" })], {
+  it("leaves a quiet parent with a waiting settle to it", async () => {
+    // Idle throughout, as in the grace before a waiting settle lands, so only the waiting settle keeps auto-settle off.
+    const { autoSettle, lifecycle } = setup([idleFor("parent", 9), idleFor("child", 9, { parentThreadId: "parent" })], {
       rows: [["parent", waitingSettleRow(NOW - DAY)]],
     });
-    expect(await autoSettle.run()).toEqual({ settled: [], unsettled: [] });
+    // The quiet child settles on its own, as it would with no settle waiting; the parent is the waiting settle's to land.
+    expect(await autoSettle.run()).toEqual({ settled: ["child"], unsettled: [] });
     expect(lifecycle.get("parent")).toEqual(waitingSettleRow(NOW - DAY));
   });
 
