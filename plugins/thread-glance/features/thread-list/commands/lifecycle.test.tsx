@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activeRow, parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
 import { busyRefusal, childNeedsYouRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED } from "@/shared/messages";
 import { DAY, HOUR, makeThread, working } from "@/testing/fixtures";
-import { toastText } from "@/testing/toast-text";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { createLifecycleCommands, lifecycleHostOf } from "./lifecycle";
 import { registerCard, SWEEP_MS } from "./sweep";
@@ -104,7 +103,7 @@ describe("AC7: a busy thread", () => {
     await lifecycle.park("a");
     await lifecycle.snooze("a", NOW + HOUR);
     await lifecycle.settle("a");
-    expect(toasts.error.mock.calls.map((entry) => toastText(entry[0], { a: "Busy one" }))).toEqual([
+    expect(toasts.error.mock.calls.map((entry) => entry[0])).toEqual([
       busyRefusal("park", "Busy one"),
       busyRefusal("snooze", "Busy one"),
       busyRefusal("settle", "Busy one"),
@@ -234,10 +233,7 @@ describe("A child's question lifts its parent (#332)", () => {
     const m = await mount({ threads: family(true), server: quiet() });
     await chooseFromClockMenu("Root", "Park thread");
     await settleFromCard("Root");
-    expect(toasts.error.mock.calls.map((entry) => toastText(entry[0], { grandkid: "Grandkid" }))).toEqual([
-      childNeedsYouRefusal("park", "Grandkid"),
-      childNeedsYouRefusal("settle", "Grandkid"),
-    ]);
+    expect(toasts.error.mock.calls.map((entry) => entry[0])).toEqual([childNeedsYouRefusal("park", "Grandkid"), childNeedsYouRefusal("settle", "Grandkid")]);
     expect(callsOf(m, "park")).toHaveLength(0);
     expect(callsOf(m, "settle")).toHaveLength(0);
     m.host.updateThread("grandkid", { hasPendingInteraction: false });
@@ -254,13 +250,13 @@ describe("A child's question lifts its parent (#332)", () => {
     const host = lifecycleHostOf(
       { call } as never,
       (id) => threads.find((thread) => thread.id === id) ?? null,
-      (id) => (id === "root" ? "grandkid" : null),
+      (id) => (id === "root" ? "Grandkid" : null),
     );
     const lifecycle = createLifecycleCommands(host);
     await lifecycle.park("root");
     await lifecycle.snooze("root", NOW + HOUR);
     await lifecycle.settle("root");
-    expect(toasts.error.mock.calls.map((entry) => toastText(entry[0], { grandkid: "Grandkid" }))).toEqual([
+    expect(toasts.error.mock.calls.map((entry) => entry[0])).toEqual([
       childNeedsYouRefusal("park", "Grandkid"),
       childNeedsYouRefusal("snooze", "Grandkid"),
       childNeedsYouRefusal("settle", "Grandkid"),
@@ -506,7 +502,7 @@ describe("commands outside the list", () => {
     expect(toasts.success.mock.calls[0]![0]).toBe("Thread parked");
     const busy = createLifecycleCommands(lifecycleHostOf(client, () => ({ ...makeThread({ id: "b", title: "B", ...working }) })));
     await busy.snooze("b", NOW + HOUR);
-    expect(toasts.error.mock.calls.map((entry) => toastText(entry[0], { b: "B" }))).toEqual([busyRefusal("snooze", "B")]);
+    expect(toasts.error).toHaveBeenCalledWith(busyRefusal("snooze", "B"));
     expect(call).toHaveBeenCalledTimes(1);
   });
 

@@ -11,9 +11,9 @@ import { inScope, type Scope } from "./scope";
 /** Most steps up a parent chain before it is taken for a cycle. */
 const MAX_DEPTH = 64;
 
-/** The id of a thread below `threadId` with a question or approval pending, or null; unlisted threads neither wait nor pass a chain on. */
-export function waitingChildId(threads: readonly PluginSidebarThread[], threadId: string): string | null {
-  return waitingBelow(threads.filter(isListed), threadId)?.id ?? null;
+/** The title of a thread below `threadId` with a question or approval pending, or null; unlisted threads neither wait nor pass a chain on. */
+export function waitingChildTitle(threads: readonly PluginSidebarThread[], threadId: string): string | null {
+  return waitingBelow(threads.filter(isListed), threadId)?.displayTitle ?? null;
 }
 
 /** A thread that failed: its last turn ended in an error nobody has read, or a queued message failed to send. */

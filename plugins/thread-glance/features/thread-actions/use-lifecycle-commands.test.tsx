@@ -5,7 +5,6 @@ import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { childNeedsYouRefusal } from "@/shared/messages";
 import { makeThread } from "@/testing/fixtures";
-import { toastText } from "@/testing/toast-text";
 import { useLifecycleCommands } from "./use-lifecycle-commands";
 
 const rpc = vi.hoisted(() => ({ call: vi.fn() }));
@@ -30,7 +29,7 @@ describe("useLifecycleCommands", () => {
     await result.current.park("root");
     await result.current.snooze("root", Date.now() + 3_600_000);
     await result.current.settle("root");
-    expect(toasts.error.mock.calls.map((call) => toastText(call[0], { grandkid: "Grandkid" }))).toEqual([
+    expect(toasts.error.mock.calls.map((call) => call[0])).toEqual([
       childNeedsYouRefusal("park", "Grandkid"),
       childNeedsYouRefusal("snooze", "Grandkid"),
       childNeedsYouRefusal("settle", "Grandkid"),

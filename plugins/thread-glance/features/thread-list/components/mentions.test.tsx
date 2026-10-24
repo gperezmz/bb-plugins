@@ -1,16 +1,17 @@
 // @vitest-environment jsdom
 // #342: a title that mentions a project, a section or a thread is drawn by bb's
 // ThreadTitle wherever the list shows it, a rename edits the stored title, and
-// text that is only read aloud uses the plain one.
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+// text that is only read aloud, or shown where bb cannot draw it, uses the plain one.
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { settledRow } from "@/shared/lifecycle";
+import { busyRefusal, childNeedsYouRefusal } from "@/shared/messages";
 import { makeThread, working } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { forgetModelLookups } from "../sync/model-lookup";
 import { closeHoverCards } from "./rows/hover-state";
-import { afterEach } from "vitest";
 import { createLifecycleCommands, lifecycleHostOf } from "../commands/lifecycle";
+import { waitingChildTitle } from "../model/forest";
 
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: toasts.success, error: toasts.error } }));
@@ -186,31 +187,25 @@ describe("the Clean dialog", () => {
 });
 
 describe("a refusal toast", () => {
-  it("names the thread through ThreadTitle, so the chip shows in the toast", async () => {
+  // bb draws ThreadTitle only inside its sidebar, and bb's toaster sits outside it, so a toast names the thread in plain text.
+  it("names a busy thread by its resolved name, as plain text", async () => {
     const m = await mount({ threads: [mentioned({ id: "a", ...working })] });
     const call = vi.fn();
     const lifecycle = createLifecycleCommands(lifecycleHostOf({ call } as never, (id) => m.host.state().threads.find((thread) => thread.id === id) ?? null));
     await lifecycle.park("a");
-    const body = toasts.error.mock.calls[0]![0];
-    const shown = render(<>{body}</>);
-    expect(shown.container.textContent).toBe("Cannot park while Fix Alpha is working or waiting for input");
-    expect(titleIn(shown.container, "a")).toBe("Fix Alpha");
+    expect(toasts.error.mock.calls.map((entry) => entry[0])).toEqual([busyRefusal("park", "Fix Alpha")]);
     expect(call).not.toHaveBeenCalled();
   });
 
-  it("names a waiting child through ThreadTitle", async () => {
-    const m = await mount({
-      threads: [
-        makeThread({ id: "p", title: "Parent", ...old }),
-        makeThread({ id: "c", title: "Kid @project:proj_a", displayTitle: "Kid Alpha", parentThreadId: "p", hasPendingInteraction: true, ...old }),
-      ],
-    });
-    const lifecycle = createLifecycleCommands(
-      lifecycleHostOf({ call: vi.fn() } as never, (id) => m.host.state().threads.find((thread) => thread.id === id) ?? null, (id) => (id === "p" ? "c" : null)),
-    );
+  it("names a waiting child by its resolved name, as plain text", async () => {
+    const threads = [
+      makeThread({ id: "p", title: "Parent", ...old }),
+      makeThread({ id: "c", title: "Kid @project:proj_a", displayTitle: "Kid Alpha", parentThreadId: "p", hasPendingInteraction: true, ...old }),
+    ];
+    const m = await mount({ threads });
+    const lookup = (id: string) => m.host.state().threads.find((thread) => thread.id === id) ?? null;
+    const lifecycle = createLifecycleCommands(lifecycleHostOf({ call: vi.fn() } as never, lookup, (id) => waitingChildTitle(m.host.state().threads, id)));
     await lifecycle.settle("p");
-    const shown = render(<>{toasts.error.mock.calls[0]![0]}</>);
-    expect(shown.container.textContent).toBe("Cannot settle while a child thread needs you: Kid Alpha");
-    expect(titleIn(shown.container, "c")).toBe("Kid Alpha");
+    expect(toasts.error.mock.calls.map((entry) => entry[0])).toEqual([childNeedsYouRefusal("settle", "Kid Alpha")]);
   });
 });
