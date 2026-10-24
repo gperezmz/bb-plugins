@@ -581,7 +581,7 @@ export const verbs = {
   },
 
   scope: {
-    usage: "<project name|All projects> [--filter <text>]: pick the project scope, typing <text> into the picker's filter first with --filter; the options shown and the rows and shelves the scope leaves",
+    usage: "<project name|All projects>... [--filter <text>]: tick each named project in the scope picker (All projects clears the ticks), typing <text> into its filter first with --filter, then press Done; the options shown with their ticks and Needs you marks, the button's name, and the rows and shelves the scope leaves",
     valued: ["filter"],
     async run({ page, url, capture, args, flags }) {
       await ready(page, url);
@@ -591,16 +591,17 @@ export const verbs = {
       if (flags.filter !== undefined) await page.getByRole("combobox", { name: "Filter projects" }).fill(flags.filter);
       await sleep(200);
       const listbox = page.getByRole("listbox", { name: "Projects" });
-      const options = await listbox.getByRole("option").evaluateAll((els) => els.map((e) => ({ name: e.textContent.trim(), selected: e.getAttribute("aria-selected") === "true" })));
+      const options = await listbox
+        .getByRole("option")
+        .evaluateAll((els) => els.map((e) => ({ name: e.textContent.trim(), selected: e.getAttribute("aria-selected") === "true", needsYou: e.querySelector('[aria-label="Needs you"]') !== null })));
       const empty = options.length === 0 ? (await listbox.innerText().catch(() => "")).trim() || null : null;
       await capture("picker", "the project picker");
-      if (args[0] !== undefined) {
-        await page.getByRole("option", { name: args[0], exact: true }).click();
-        await page.getByRole("button", { name: `Project scope: ${args[0]}` }).waitFor();
-      } else await page.keyboard.press("Escape");
+      for (const name of args) await listbox.getByRole("option", { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( Needs you)?$`) }).click();
+      await page.getByRole("button", { name: "Done" }).click();
+      await sleep(300);
       const after = await readList(page);
-      await capture("after", `scope ${args[0] ?? "(unchanged)"}`);
-      return { options, empty, before, after };
+      await capture("after", `scope ${args.join(", ") || "(unchanged)"}`);
+      return { options, empty, button: await scopeButton(page).getAttribute("aria-label"), before, after };
     },
   },
 

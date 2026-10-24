@@ -1,6 +1,11 @@
-// The project scope picker: its options, the fallback when its project goes,
-// the filter field and the keyboard moves. Pure.
-import type { PluginSidebarProject } from "@get-bb/plugin-sdk/app";
+// The project scope picker: the scope itself, its options, the marks for the
+// projects left out, the filter field and the keyboard moves. Pure.
+import type { PluginSidebarProject, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+
+/** The projects the list is limited to; empty is All projects. */
+export type Scope = readonly string[];
+
+export const ALL_PROJECTS_SCOPE: Scope = [];
 
 export interface ScopeOption {
   /** The project id, null for All projects. */
@@ -18,9 +23,25 @@ export function scopeOptions(projects: readonly PluginSidebarProject[]): ScopeOp
   return [ALL_PROJECTS, ...named];
 }
 
-/** The scope in force: the chosen project while it exists, else All projects. */
-export function resolveScope(scopeId: string | null, projects: readonly PluginSidebarProject[]): string | null {
-  return scopeId !== null && projects.some((project) => project.id === scopeId) ? scopeId : null;
+/**
+ * The scope in force: `scope` without the projects that are gone, the same
+ * array when none is. `projects` are the ones bb has listed, so while it has
+ * not listed them yet (`loaded` false) every project in `scope` still counts.
+ */
+export function resolveScope(scope: Scope, projects: readonly PluginSidebarProject[], loaded: boolean): Scope {
+  if (!loaded || scope.length === 0) return scope;
+  const kept = scope.filter((id) => projects.some((project) => project.id === id));
+  return kept.length === scope.length ? scope : kept;
+}
+
+/** `scope` with `projectId` added or, when it is in it, removed; emptied, it is All projects. */
+export function toggleProject(scope: Scope, projectId: string): Scope {
+  return scope.includes(projectId) ? scope.filter((id) => id !== projectId) : [...scope, projectId];
+}
+
+/** Whether a thread of `projectId` is in `scope`. */
+export function inScope(scope: Scope, projectId: string): boolean {
+  return scope.length === 0 || scope.includes(projectId);
 }
 
 /** The options whose name contains `query`, ignoring case; All projects matches by its name too. */
@@ -44,7 +65,31 @@ export function moveHighlight(index: number, key: "ArrowDown" | "ArrowUp" | "Hom
   }
 }
 
-/** The name the picker's button shows. */
-export function scopeLabel(scopeId: string | null, projects: readonly PluginSidebarProject[]): string {
-  return scopeId === null ? ALL_PROJECTS.name : (projects.find((project) => project.id === scopeId)?.name ?? ALL_PROJECTS.name);
+/** The name the picker's button shows: All projects, or the chosen projects by name. */
+export function scopeLabel(scope: Scope, projects: readonly PluginSidebarProject[]): string {
+  const names = scopeOptions(projects)
+    .filter((option) => option.id !== null && scope.includes(option.id))
+    .map((option) => option.name);
+  return names.length === 0 ? ALL_PROJECTS.name : names.join(", ");
+}
+
+/**
+ * The projects `scope` leaves out that have a thread waiting on the person (a
+ * question or an approval), by id. Nothing is left out of All projects.
+ */
+export function projectsNeedingYou(scope: Scope, threads: readonly PluginSidebarThread[]): readonly string[] {
+  if (scope.length === 0) return NONE;
+  const ids = new Set<string>();
+  for (const thread of threads) if (thread.hasPendingInteraction && !scope.includes(thread.projectId)) ids.add(thread.projectId);
+  return ids.size === 0 ? NONE : [...ids].sort();
+}
+
+const NONE: readonly string[] = [];
+
+/** What the picker's button is named for a screen reader: the scope, then the left-out projects that need the person. */
+export function scopeButtonLabel(scope: Scope, projects: readonly PluginSidebarProject[], needingYou: readonly string[]): string {
+  const base = `Project scope: ${scopeLabel(scope, projects)}`;
+  if (needingYou.length === 0) return base;
+  const names = needingYou.map((id) => projects.find((project) => project.id === id)?.name ?? id);
+  return `${base}. Needs you in ${names.join(", ")}`;
 }

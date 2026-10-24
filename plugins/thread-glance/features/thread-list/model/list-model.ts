@@ -16,6 +16,7 @@ import { sortByManualOrder } from "@/shared/manual-order";
 import type { Settings } from "@/shared/settings";
 import type { TreeSignals } from "@/shared/lifecycle";
 import { isShelfCollapsed, type DeviceState } from "../storage/device-state";
+import type { Scope } from "./scope";
 import { buildForest, isFailed, type ChildrenInfo, type Forest } from "./forest";
 import {
   canReorderActive,
@@ -120,8 +121,8 @@ export interface ModelInputs {
   settings: Settings;
   order: readonly string[];
   device: DeviceState;
-  /** The project scope; null for All projects. */
-  scopeId: string | null;
+  /** The project scope; empty for All projects. */
+  scope: Scope;
   activeThreadId: string | null;
   draftIds: ReadonlySet<string>;
   /** Threads other split panes show. */
@@ -178,7 +179,7 @@ function followKeys<T extends { key: string }>(units: readonly T[], keys: readon
 
 export function buildModel(inputs: ModelInputs): ListModel {
   const { settings, device, now, lifecycle, activeThreadId } = inputs;
-  const forest = buildForest(inputs.threads, inputs.scopeId, settings);
+  const forest = buildForest(inputs.threads, inputs.scope, settings);
   const rowOf = (id: string): LifecycleRow | null => lifecycle[id] ?? null;
 
   // Which shelf each root is on.

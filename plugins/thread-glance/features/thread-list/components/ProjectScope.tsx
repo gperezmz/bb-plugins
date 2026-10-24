@@ -1,14 +1,24 @@
-// The project scope picker: "All projects" or one project, filtering every
-// shelf. It is not saved: each mount of the list starts on All projects.
+// The project scope picker: All projects, or the projects ticked in it,
+// filtering every shelf. A tick applies at once and Done closes the picker.
+// The window keeps the scope across reloads; a project left out that has a
+// thread waiting on the person marks the button and its own row.
 import { useId, useState } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { filterScopeOptions, moveHighlight, scopeLabel, scopeOptions } from "../model/scope";
+import { ALL_PROJECTS_SCOPE, filterScopeOptions, moveHighlight, scopeButtonLabel, scopeLabel, scopeOptions, toggleProject, type ScopeOption } from "../model/scope";
 import { useCommands, useScope } from "../store/hooks";
 
+function NeedsYouMark() {
+  return (
+    <span role="img" aria-label="Needs you" className="shrink-0 text-[color:var(--tg-needs-you)]">
+      <Icon name="CircleQuestion" aria-hidden className="size-3.5" />
+    </span>
+  );
+}
+
 export function ProjectScope() {
-  const { scopeId, projects } = useScope();
+  const { scope, projects, needingYou } = useScope();
   const commands = useCommands();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -16,15 +26,15 @@ export function ProjectScope() {
   const listId = useId();
   const options = filterScopeOptions(scopeOptions(projects), query);
 
-  const choose = (id: string | null) => {
-    commands.setScope(id);
-    setOpen(false);
+  const isSelected = (option: ScopeOption) => (option.id === null ? scope.length === 0 : scope.includes(option.id));
+  const choose = (option: ScopeOption) => {
+    commands.setScope(option.id === null ? ALL_PROJECTS_SCOPE : toggleProject(scope, option.id));
   };
   const reset = (next: boolean) => {
     setOpen(next);
     if (next) {
       setQuery("");
-      setHighlight(Math.max(0, scopeOptions(projects).findIndex((option) => option.id === scopeId)));
+      setHighlight(Math.max(0, scopeOptions(projects).findIndex((option) => option.id !== null && scope.includes(option.id))));
     }
   };
 
@@ -35,11 +45,12 @@ export function ProjectScope() {
           <button
             type="button"
             aria-haspopup="listbox"
-            aria-label={`Project scope: ${scopeLabel(scopeId, projects)}`}
+            aria-label={scopeButtonLabel(scope, projects, needingYou)}
             className="flex h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-sm text-foreground outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
           >
             <Icon name="Folder" aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate">{scopeLabel(scopeId, projects)}</span>
+            <span className="min-w-0 flex-1 truncate">{scopeLabel(scope, projects)}</span>
+            {needingYou.length > 0 ? <Icon name="CircleQuestion" aria-hidden className="size-3.5 shrink-0 text-[color:var(--tg-needs-you)]" /> : null}
             <Icon name="ChevronDown" aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           </button>
         </PopoverTrigger>
@@ -64,27 +75,37 @@ export function ProjectScope() {
               } else if (event.key === "Enter") {
                 event.preventDefault();
                 const option = options[highlight];
-                if (option !== undefined) choose(option.id);
+                if (option !== undefined) choose(option);
               }
             }}
             className="mb-1 h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
-          <div id={listId} role="listbox" aria-label="Projects" className="max-h-64 overflow-y-auto">
+          <div id={listId} role="listbox" aria-label="Projects" aria-multiselectable className="max-h-64 overflow-y-auto">
             {options.map((option, index) => (
               <div
                 key={option.id ?? "all"}
                 id={`${listId}-${index}`}
                 role="option"
-                aria-selected={option.id === scopeId}
+                aria-selected={isSelected(option)}
                 onMouseEnter={() => setHighlight(index)}
-                onClick={() => choose(option.id)}
+                onClick={() => choose(option)}
                 className={cn("flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-sm", index === highlight && "bg-sidebar-accent")}
               >
                 <span className="min-w-0 flex-1 truncate">{option.name}</span>
-                {option.id === scopeId ? <Icon name="Check" aria-hidden className="size-3.5 shrink-0" /> : null}
+                {option.id !== null && needingYou.includes(option.id) ? <NeedsYouMark /> : null}
+                {isSelected(option) ? <Icon name="Check" aria-hidden className="size-3.5 shrink-0" /> : null}
               </div>
             ))}
             {options.length === 0 ? <p className="px-2 py-1.5 text-sm text-muted-foreground">No projects match.</p> : null}
+          </div>
+          <div className="mt-1 flex justify-end">
+            <button
+              type="button"
+              onClick={() => reset(false)}
+              className="h-8 rounded-md px-3 text-sm font-medium outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            >
+              Done
+            </button>
           </div>
         </PopoverContent>
       </Popover>

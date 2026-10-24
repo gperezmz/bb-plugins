@@ -178,7 +178,7 @@ export default function threadGlance(bb: BbPluginApi): void {
     stopPort: (input) => portActions.stop(input),
     ownedPorts: ({ threadId }) => portActions.owned(threadId),
     closePorts: (input) => portActions.close(input),
-    previewClean: ({ projectId }) => clean.preview(projectId),
+    previewClean: ({ projectIds }) => clean.preview(projectIds),
     runClean: ({ token }) => clean.run(token),
   });
 

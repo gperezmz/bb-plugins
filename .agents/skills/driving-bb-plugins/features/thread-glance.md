@@ -56,10 +56,15 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
   other list plugin, or Settings → Appearance → `button "Sidebar thread list"`
   → `menuitem` starting `Thread Glance`, or
   `bb settings ui set sidebar.threadListProvider thread-glance/thread-glance`.
-- Scope: `button "Project scope: <All projects|project>"`, which opens a
-  `combobox "Filter projects"` over `listbox "Projects"` of `option`s
-  (`No projects match.` when the filter leaves none). The scope is not kept: a
-  new window starts on All projects.
+- Scope: `button "Project scope: <All projects|project, project>"`, which opens
+  a `combobox "Filter projects"` over `listbox "Projects"` of `option`s, each
+  ticked (`aria-selected`) when in the scope, plus `button "Done"` (`No projects
+  match.` when the filter leaves none). A click ticks or unticks and applies at
+  once; Done closes; `All projects` clears the ticks. The scope is kept per
+  window in session storage, so a reload keeps it and a new window starts on
+  All projects. A project the scope leaves out that has a thread needing you
+  puts `img "Needs you"` on its option, and the button's name gains
+  `. Needs you in <project>`.
 - Shelf headers: `button` named `Pinned`, `Active`, `Working`, `Inactive`,
   `Snoozed`, `Parked` or `Settled` with `aria-expanded`, named `Name (N)` while
   collapsed. Pinned, Active and Working start open, the rest collapsed. A shelf
@@ -229,8 +234,10 @@ the pointer, so those verbs run on the desktop viewport.
   header (`Collapse drives group`) for a project with two Active threads;
   `Manual order` is the default.
 - **Scope** (`scope`): `thread-glance scope drives` lists the picker's
-  `options` and the rows left; `scope "All projects"` clears it; with no
-  argument it only reads the options. `--filter dri` types into the filter
+  `options` and the rows left; several names tick several projects
+  (`scope drives Personal` reads `button` `Project scope: drives, Personal`);
+  `scope "All projects"` clears it; with no argument it only reads the
+  options. `options[].needsYou` is the Needs you mark. `--filter dri` types into the filter
   first (`options` only `drives`); `--filter zzz` leaves none and `empty`
   reads `No projects match.`
 - **Scenes** (`list`): `scope Personal` on a run whose threads are all in

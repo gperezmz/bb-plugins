@@ -17,7 +17,7 @@ function inputs(patch: Partial<ModelInputs> & Pick<ModelInputs, "threads">): Mod
     settings: DEFAULT_SETTINGS,
     order: [],
     device: INITIAL_DEVICE_STATE,
-    scopeId: null,
+    scope: [],
     activeThreadId: null,
     draftIds: new Set(),
     openElsewhereIds: new Set(),

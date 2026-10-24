@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart TB
-  scope["Project scope: All projects, or one project"]
+  scope["Project scope: All projects, or the ticked projects"]
   subgraph upper["Upper group"]
     pinned["Pinned"] --> active["Active"]
   end
@@ -16,10 +16,12 @@ The list is a [project scope](#project-scope) and then a column of [shelves](#sh
 
 ## Project scope
 
-The picker at the top of the list. **All projects** shows every shelf as it is; choosing one project limits every shelf to that project.
+The picker at the top of the list. **All projects** shows every shelf as it is; ticking projects limits every shelf to those projects.
 
-- It lists every project, the personal one included, with a filter field. The arrow keys move through the options and wrap, and Home and End jump to the first and last.
-- It is not saved. Each time the list mounts it starts on All projects, and it falls back to All projects when its project disappears.
+- It lists every project, the personal one included, with a filter field. A project ticks and unticks when clicked, or with Enter on the highlighted option, and the list follows at once; **Done** closes the picker. **All projects** clears the ticks. The arrow keys move through the options and wrap, and Home and End jump to the first and last.
+- The scope applies to every shelf and to Clean. It does not limit thread search, which is bb's palette.
+- It is saved per window, in the browser's session storage: a reload keeps it, another window has its own, and a new window starts on All projects. A project that bb no longer lists drops out of the scope once bb has listed the projects, and a scope with no project left is All projects.
+- A project the scope leaves out that has a thread waiting on a question or an approval puts a **Needs you** mark on the picker's button, whose name then ends "Needs you in <projects>", and on its own row in the picker. The mark goes when the thread is answered.
 
 ## Shelves
 
