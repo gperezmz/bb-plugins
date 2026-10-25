@@ -2,7 +2,7 @@
 // a fake system and the SDK's fake plugin host: what AC2 and AC7 promise end
 // to end, and auto-settle reading GitHub PR Status through the SDK (#330).
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHostEntry } from "../../host/handlers";
 import { createSystemProbe } from "../../host/probe";
 import { createFakeSystem, linuxListener, procStat, type FakeSystem } from "../../host/testing/fake-system";
@@ -69,6 +69,13 @@ function githubPrStatus(options: { answer?: (keys: string[]) => Record<string, u
   };
 }
 
+const hosts: { harness: { lifecycle: { dispose(): Promise<void> } } }[] = [];
+
+afterEach(async () => {
+  vi.useRealTimers();
+  for (const host of hosts.splice(0)) await host.harness.lifecycle.dispose();
+});
+
 /** The plugin over a fake bb whose threads hold one idle thread, working in /work/app, and whose host entry is the real one over `system`. */
 async function load(
   system: FakeSystem,
@@ -117,6 +124,7 @@ async function load(
       return reply;
     },
   });
+  hosts.push(host);
   await plugin(host.bb);
   return { host, harness: host.harness, kill, replies, closes, environmentLookup };
 }

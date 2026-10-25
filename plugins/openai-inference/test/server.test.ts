@@ -1,5 +1,5 @@
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { Endpoint } from "../src/endpoints.js";
 import plugin from "../server.js";
 
@@ -26,6 +26,12 @@ interface Options {
   keys?: Record<string, string>;
   hostDown?: boolean;
 }
+
+const hosts: { harness: { lifecycle: { dispose(): Promise<void> } } }[] = [];
+
+afterEach(async () => {
+  for (const fake of hosts.splice(0)) await fake.harness.lifecycle.dispose();
+});
 
 /** Starts the plugin on a fake host whose host entry keeps keys in `keys` and answers each completion with `answer`. */
 const start = async (options: Options = {}) => {
@@ -69,6 +75,7 @@ const start = async (options: Options = {}) => {
       }
     },
   });
+  hosts.push(fake);
   if (options.legacy === undefined) await fake.bb.storage.kv.set("legacy-settings-copied", true);
   if (options.endpoints !== undefined) await fake.bb.storage.kv.set("endpoints", options.endpoints);
   await plugin(fake.bb);
@@ -175,6 +182,7 @@ describe("status", () => {
       pluginId: "openai-inference",
       sdk: { system: { config: async () => ({ primaryHostId: null }) } as never },
     });
+    hosts.push(fake);
     await fake.bb.storage.kv.set("legacy-settings-copied", true);
     await fake.bb.storage.kv.set("endpoints", [mlx]);
     await plugin(fake.bb);
@@ -457,11 +465,13 @@ describe("copying what 0.3 saved", () => {
   /** Reads the values of the old settings as they stay saved, in a reload that declares them. */
   const savedValues = async (harness: Harness) => {
     let values: Record<string, unknown> = {};
-    await harness.lifecycle.reload(async (bb) => {
-      values = await bb.settings
-        .define({ endpoints: { type: "string", label: "e", default: "[]" }, keys: { type: "string", label: "k", secret: true } })
-        .get();
-    });
+    hosts.push(
+      await harness.lifecycle.reload(async (bb) => {
+        values = await bb.settings
+          .define({ endpoints: { type: "string", label: "e", default: "[]" }, keys: { type: "string", label: "k", secret: true } })
+          .get();
+      }),
+    );
     return values;
   };
 
@@ -478,6 +488,7 @@ describe("copying what 0.3 saved", () => {
     run.controller.abort();
     await run.done;
     const reloaded = await harness.lifecycle.reload(plugin);
+    hosts.push(reloaded);
     expect(reloaded.harness.inspection.registrations.settingsDescriptors).toEqual({});
     await stop();
   });
@@ -517,6 +528,7 @@ describe("copying what 0.3 saved", () => {
     await run.done;
     await harness.behavior.callRpc("removeEndpoint", { id: "mac" });
     const reloaded = await harness.lifecycle.reload(plugin);
+    hosts.push(reloaded);
     expect(reloaded.harness.inspection.registrations.services.map((s) => s.name)).toEqual(["send-endpoints"]);
     expect(await reloaded.bb.storage.kv.get<Endpoint[]>("endpoints")).toHaveLength(2);
     expect(keys).toEqual({ mlx: "sk-mlx" });

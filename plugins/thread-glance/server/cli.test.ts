@@ -1,15 +1,22 @@
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import plugin from "../server";
 import { DEFAULT_SETTINGS, SETTING_DESCRIPTIONS, SETTING_KEYS } from "../shared/settings";
 import { CHANNELS, type Versioned } from "../shared/signals";
 
+const hosts: { harness: { lifecycle: { dispose(): Promise<void> } } }[] = [];
+
 async function load() {
   const host = createFakePluginHost({ pluginId: "thread-glance" });
+  hosts.push(host);
   await plugin(host.bb);
   return host.harness;
 }
 type Harness = Awaited<ReturnType<typeof load>>;
+
+afterEach(async () => {
+  for (const host of hosts.splice(0)) await host.harness.lifecycle.dispose();
+});
 
 const stored = async (harness: Harness) =>
   (await harness.behavior.callRpc("sync", { since: null }) as { settings: Versioned<typeof DEFAULT_SETTINGS> }).settings.value;
@@ -87,6 +94,7 @@ describe("bb thread-glance prefs", () => {
 
   it("reads a record from before Thread display with compacting working threads on as Compact working threads", async () => {
     const host = createFakePluginHost({ pluginId: "thread-glance" });
+    hosts.push(host);
     await host.bb.storage.kv.set("settings", { ...DEFAULT_SETTINGS, threadDisplay: undefined, compactWorkingThreads: true });
     await plugin(host.bb);
     expect((await host.harness.behavior.runCli(["prefs", "get", "threadDisplay"])).stdout).toBe('"compact-working"');
@@ -96,6 +104,7 @@ describe("bb thread-glance prefs", () => {
 
   it("stores the old compactWorkingThreads switch beside Thread display, so an earlier release still reads it", async () => {
     const host = createFakePluginHost({ pluginId: "thread-glance" });
+    hosts.push(host);
     await plugin(host.bb);
     const run = (value: string) => host.harness.behavior.runCli(["prefs", "set", "threadDisplay", value]);
     await run("compact-all");

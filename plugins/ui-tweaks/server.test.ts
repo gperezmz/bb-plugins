@@ -44,6 +44,7 @@ describe("the saved tweaks", () => {
     const host = await load();
     await host.harness.behavior.callRpc("setTweaks", { textSize: "small", width: "wide" });
     const reloaded = await host.harness.lifecycle.reload(uiTweaks);
+    hosts.push(reloaded);
     expect(await reloaded.harness.behavior.callRpc("getTweaks", null)).toEqual({ textSize: "small", width: "wide" });
   });
 
@@ -51,6 +52,7 @@ describe("the saved tweaks", () => {
     const host = await load();
     await host.harness.behavior.callRpc("setTweaks", { textSize: "small", width: "wide" });
     const reinstalled = await host.harness.lifecycle.reload(uiTweaks);
+    hosts.push(reinstalled);
     await reinstalled.harness.lifecycle.install();
     expect(await reinstalled.harness.behavior.callRpc("getTweaks", null)).toEqual({ textSize: "medium", width: "medium" });
   });

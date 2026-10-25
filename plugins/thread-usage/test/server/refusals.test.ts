@@ -5,14 +5,21 @@
  * refusal a person reads without failing here.
  */
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import plugin, { rpcContract } from "../../server";
+
+const hosts: { harness: { lifecycle: { dispose(): Promise<void> } } }[] = [];
 
 async function load() {
   const host = createFakePluginHost({ pluginId: "thread-usage" });
+  hosts.push(host);
   await plugin(host.bb);
   return host.harness.behavior;
 }
+
+afterEach(async () => {
+  for (const host of hosts.splice(0)) await host.harness.lifecycle.dispose();
+});
 
 const refusal = (promise: Promise<unknown>) =>
   promise.then(

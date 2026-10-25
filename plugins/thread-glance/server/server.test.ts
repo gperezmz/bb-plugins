@@ -10,8 +10,11 @@ import { listedThread, sdkWith } from "./testing/fakes";
 
 type Overrides = NonNullable<Parameters<typeof createFakePluginHost>[0]>["sdk"];
 
+const hosts: { harness: { lifecycle: { dispose(): Promise<void> } } }[] = [];
+
 async function load(sdk: Overrides = {}) {
   const host = createFakePluginHost({ pluginId: "thread-glance", sdk });
+  hosts.push(host);
   await plugin(host.bb);
   return host;
 }
@@ -39,8 +42,9 @@ const rowOf = (answer: SyncAnswer, threadId: string) => answer.records[threadId]
 
 const recordSignals = (harness: Harness) => signalsOn(harness, CHANNELS.records) as RecordsSignal[];
 
-afterEach(() => {
+afterEach(async () => {
   vi.useRealTimers();
+  for (const host of hosts.splice(0)) await host.harness.lifecycle.dispose();
 });
 
 describe("sync", () => {
@@ -566,6 +570,7 @@ describe("settings", () => {
     const { harness } = await load();
     await harness.behavior.callRpc("writeSettings", { patch: { hoursBeforeInactive: 24 } });
     const reloaded = await harness.lifecycle.reload(plugin);
+    hosts.push(reloaded);
     expect((await sync(reloaded.harness)).settings.value.hoursBeforeInactive).toBe(24);
   });
 });
@@ -707,7 +712,9 @@ describe("the startup service", () => {
       ["old", parkedRow(1)],
       ["stale", parkedRow(1_000)],
     ]);
-    const { harness, bb } = await first.harness.lifecycle.reload(plugin);
+    const replacement = await first.harness.lifecycle.reload(plugin);
+    hosts.push(replacement);
+    const { harness, bb } = replacement;
     const service = harness.behavior.runService("startup");
     await vi.waitFor(async () => expect((await sync(harness)).order.value).toEqual(["newer", "stale", "kept"]));
     service.controller.abort();
@@ -746,7 +753,9 @@ describe("the startup service", () => {
       ["gone", parkedRow(5_000)],
     ]);
     createOrderStore(first.bb.storage.database()).replace(["skipped", "gone", "kept"]);
-    const { harness, bb } = await first.harness.lifecycle.reload(plugin);
+    const replacement = await first.harness.lifecycle.reload(plugin);
+    hosts.push(replacement);
+    const { harness, bb } = replacement;
     const service = harness.behavior.runService("startup");
     service.controller.abort();
     await service.done;
@@ -765,7 +774,9 @@ describe("the startup service", () => {
     const first = await load(sdk);
     createLifecycleStore(first.bb.storage.database()).putMany([["a", parkedRow(5_000)]]);
     createOrderStore(first.bb.storage.database()).replace(["a"]);
-    const { harness, bb } = await first.harness.lifecycle.reload(plugin);
+    const replacement = await first.harness.lifecycle.reload(plugin);
+    hosts.push(replacement);
+    const { harness, bb } = replacement;
     const service = harness.behavior.runService("startup");
     service.controller.abort();
     await service.done;
@@ -810,6 +821,7 @@ describe("the earlier list's data", () => {
     expect(await bb.storage.kv.list("note:")).toEqual([]);
 
     const reloaded = await harness.lifecycle.reload(plugin);
+    hosts.push(reloaded);
     await start(reloaded.harness);
     const answer = await sync(reloaded.harness);
     expect(answer.settings.value.workingShelf).toBe(true);
