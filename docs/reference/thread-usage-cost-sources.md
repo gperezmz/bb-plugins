@@ -11,7 +11,7 @@ Each turn is `estimate`, or `unpriced`. The Usage tab labels a turn's source and
 | `estimate` | Tokens and a price from models.dev are known: tokens times the price |
 | `unpriced` | Tokens are known, no price is |
 
-The report's cost has three amounts, `gateway`, `harness` and `estimate`. Another plugin in this repository adds the three together for a fleet's cost, so they stay. `gateway` and `harness` are always zero, and `estimate` is every dollar.
+The report's cost has three amounts, `gateway`, `harness` and `estimate`. `gateway` and `harness` are always zero, and `estimate` is every dollar; the three stay in the report, the CLI and the agent tool so a caller that sums them keeps working.
 
 ## How a request is priced
 

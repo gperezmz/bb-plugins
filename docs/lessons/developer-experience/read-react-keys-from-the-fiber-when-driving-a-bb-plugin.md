@@ -11,6 +11,9 @@ applies_when:
   - "a drive's browser console is empty and that is about to be read as the page having no duplicate key"
   - "changing the keys of a list on the Fleets page or the Fleet tab"
 tags: [react, keys, duplicate-key, driving, headless-chromium, console, verification]
+status: stale
+stale_reason: "The Fleets page and Fleet tab it cites were deleted with unattendish-sdlc. Reading keys from the fiber may still hold for any plugin page, which is not settled here."
+stale_date: 2026-10-25
 ---
 
 # Reading React keys from the fiber when a drive of a bb plugin must show "no duplicate key"

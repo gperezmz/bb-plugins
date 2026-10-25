@@ -1,3 +1,0 @@
-# A fake token in a redaction test, as it was first committed on the Unattendish branch.
-# The test now builds it at run time, so a scan of a new commit finds nothing.
-fdd2df4a6ab126e974302ad1742458c351217d93:plugins/unattendish-sdlc/src/fleet/domain/redact.test.ts:generic-api-key:4

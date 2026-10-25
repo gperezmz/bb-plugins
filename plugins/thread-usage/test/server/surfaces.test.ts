@@ -1,8 +1,7 @@
 /**
  * The cost every surface reports, through the entry points a person or
  * another plugin uses: the RPC the Usage tab and the Thread usage page call,
- * `bb thread-usage`, the `thread_usage` agent tool, and the report another
- * plugin in this repository reads for a fleet's cost. bb's events and the
+ * `bb thread-usage` and the `thread_usage` agent tool. bb's events and the
  * models.dev document are the only things faked.
  */
 import { createFakePluginHost, type FakePluginHost } from "@get-bb/plugin-sdk/testing";
@@ -106,7 +105,7 @@ describe("a thread's dollars are the models.dev estimate, request by request", (
     expect(report.turns[0]!.tierDetail).toMatchObject({ requests: 2, tiered: [{ number: 2, prompt: 100_001, tierAbove: 100_000 }] });
   });
 
-  it("keeps the report's three cost amounts for a fleet, gateway and harness at zero, and says where each turn's cost came from", async () => {
+  it("keeps the report's three cost amounts, gateway and harness at zero, and says where each turn's cost came from", async () => {
     const t = await load();
     await t.fetchPrices();
     const report = await t.report();

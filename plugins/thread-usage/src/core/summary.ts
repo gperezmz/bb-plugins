@@ -87,8 +87,8 @@ export function mergeLogEntries(
 }
 
 /**
- * Dollars by source. `gateway` and `harness` are always zero: another plugin
- * in this repository adds the three together for a fleet, so they stay.
+ * Dollars by source. `gateway` and `harness` are always zero; they stay in the
+ * report's shape so a caller that sums the three keeps working.
  */
 export interface CostBuckets {
   gateway: number;

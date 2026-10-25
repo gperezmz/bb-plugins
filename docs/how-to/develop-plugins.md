@@ -63,10 +63,9 @@ The repository-wide checks:
 gitleaks git --redact .
 lychee --offline --include-fragments '*.md' 'docs/**/*.md' 'plugins/*/*.md'
 npm ci --prefix scripts/ci && node scripts/ci/check-mermaid.mjs
-scripts/harness/run-env.test.sh
 ```
 
-`lychee --offline` checks links to files in the repository and their `#` anchors, and skips web addresses. `run-env.test.sh` checks the drive harnesses' passed list and leak check, and refuses a credential or a way to one on that list, among the names a run sets or among what `run-env.sh` adds to a run, as [the shared harness README](../../scripts/harness/README.md#environment-isolation) describes them. It needs no install and no bb, and takes about two seconds.
+`lychee --offline` checks links to files in the repository and their `#` anchors, and skips web addresses.
 
 ## Turn on the commit hooks
 
@@ -85,12 +84,6 @@ git config core.hooksPath .githooks
 | Script | When to run it |
 |---|---|
 | `npm run prices` | To refresh the models.dev snapshot bundled in `prices/`. It needs Node 22.18 or later, which runs the TypeScript the script shares with the server. The plugin fetches current prices at run time; the snapshot is only its [fallback](../reference/thread-usage-cost-sources.md#price-freshness). |
-
-### Unattendish
-
-| Script | When to run it |
-|---|---|
-| `harness/start.sh`, `harness/drives/run-all.sh`, `harness/stop.sh` | To drive a change against the real plugin in a throwaway bb: a fake GitHub, GitLab, Linear and Jira Cloud that the plugin polls, scripted over HTTP, and Claude Code manager threads on the shared fake Anthropic API, with every poll interval at the 30-second floor, so registering, a wake, an echo, a fleet with no manager, a refused credential and a restart are each reached in under 2 minutes. It needs Linux, `node` 24, `jq`, `curl`, `git`, `rsync`, `bb`, `bb-server` and `bb-host-daemon`, and `npm install` in the plugin; it never touches your own bb. The [harness README](../../plugins/unattendish-sdlc/harness/README.md) has the drives and the ports. |
 
 ## Third-party notices
 

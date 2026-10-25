@@ -11,6 +11,9 @@ applies_when:
   - "measuring how narrow a plugin's CSS grid row can get, in bb's web UI through a drive"
   - "a cell of a grid row with `truncate`, `min-w-0` or an `auto` track reads wider or narrower at min-content than it draws"
 tags: [switch-point, min-content, css-grid, tailwind, layout, driving, headless-chromium, measurement]
+status: stale
+stale_reason: "The Fleets page of the deleted unattendish-sdlc plugin is gone, and the drive-bb-plugins ui script the measurement ran in was deleted. The measuring method may still hold for another plugin's grid row, which is not settled here."
+stale_date: 2026-10-25
 ---
 
 # Measuring the narrowest width of a Fleets page row in bb, to size the switch point

@@ -11,6 +11,9 @@ applies_when:
   - "a drive comes back blocked because the plugin would reach api.github.com, a GitLab host, api.linear.app or an atlassian.net site"
   - "driving any plugin code that sends a token to a fixed public host with no address to point at a fake"
 tags: [driving, fake-services, tls-proxy, certificate-authority, connect, accounts, verification]
+status: stale
+stale_reason: "The Connect popup and the harness it was driven through belong to the deleted unattendish-sdlc plugin. The TLS-proxy method may still hold for another plugin that sends a token to a fixed host, which is not settled here."
+stale_date: 2026-10-25
 ---
 
 # Driving a plugin flow that sends a token to a service's real host

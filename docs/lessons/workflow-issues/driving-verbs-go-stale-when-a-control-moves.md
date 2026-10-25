@@ -11,6 +11,9 @@ applies_when:
   - "a verification drive reports that a driving-bb-plugins verb times out or finds no element, while the user's own path works"
   - "verifying a change to a plugin surface that features/<plugin>.md names by role and accessible name"
 tags: [driving, verbs, feature-map, playwright, radio, menu, verification]
+status: stale
+stale_reason: "The driving-bb-plugins skill and the unattendish-sdlc plugin whose controls its verbs pressed were deleted (f26b390d, and the plugin's deletion); no drive-bb-plugins script remains to go stale. Whether the point survives for the universal driving-apps skill is not settled here."
+stale_date: 2026-10-25
 ---
 
 # The driving skill's verbs go stale when a plugin's control moves

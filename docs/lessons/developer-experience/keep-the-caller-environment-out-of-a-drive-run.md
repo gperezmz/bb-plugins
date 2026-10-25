@@ -13,6 +13,9 @@ applies_when:
   - "verifying that no credential reaches a run's processes, Chromium included"
   - "a run's captures differ from the base in what the drives' repository is called or which branch it is on"
 tags: [driving, harness, environment, leak, claude-code, nixos, gh, verification]
+status: stale
+stale_reason: "scripts/harness/run-env.sh and the harnesses that sourced it (unattendish-sdlc, drive-bb-plugins) were deleted. Whether the leak-by-name practice carries over to the driving-apps skill is not settled here."
+stale_date: 2026-10-25
 ---
 
 # Keeping the caller's environment out of a drive run, and proving it by name

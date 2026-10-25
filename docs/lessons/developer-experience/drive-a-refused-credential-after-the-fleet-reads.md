@@ -11,6 +11,9 @@ applies_when:
   - "a drive makes a fake service answer 401 to test an expired, revoked or wrong token"
   - "a drive shows `cannot read` or Connect… where the requirement expects a refusal"
 tags: [driving, fake-services, refused, credential-refused, verification, harness]
+status: stale
+stale_reason: "The unattendish-sdlc plugin, its fake-service harness and its fleet were deleted. Nothing in the repository can still be driven this way."
+stale_date: 2026-10-25
 ---
 
 # Driving a credential the service refuses, rather than one recorded as unable to read
