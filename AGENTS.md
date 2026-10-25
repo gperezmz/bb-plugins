@@ -12,11 +12,8 @@ you are running on; this section is the explicit request an effort waits for.
 - `complex` work has a cause and effect that only probing shows, in
   retrospect.
 
-A skill that names the kind of a subagent's work decides it. Judging work
-someone else wrote takes the kind of what the judge has to find, one kind up
-where that is unclear, since a judge sized too small misses what it was there
-for and shows it only as a narrower verdict. The kind of work sets the model,
-and high stakes alone leave the kind as it is.
+A skill that names the kind of a subagent's work decides it. The kind of work
+sets the model, and high stakes alone leave the kind as it is.
 
 | Harness | `clear` | `complicated` | `complex` |
 | --- | --- | --- | --- |
