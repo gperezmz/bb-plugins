@@ -1,9 +1,10 @@
 ## Agents
 
-Name the kind of work a subagent gets as Cynefin sorts it, by when its
-cause and effect can be known, and take its model, and its effort where your
-harness takes one, from that kind's column for your harness, whatever model
-you are running on; this section is the explicit request an effort waits for.
+Name the kind of work a subagent or a thread gets as Cynefin sorts it, by when
+its cause and effect can be known, and take its model, and its effort where the
+harness takes one, from that kind's column for the harness it runs on, whatever
+model you are running on; this section is the explicit request an effort waits
+for.
 
 - `clear` work has a cause and effect that is plain before the work
   starts, without analysis.
@@ -12,8 +13,8 @@ you are running on; this section is the explicit request an effort waits for.
 - `complex` work has a cause and effect that only probing shows, in
   retrospect.
 
-A skill that names the kind of a subagent's work decides it. The kind of work
-sets the model, and high stakes alone leave the kind as it is.
+A skill that names the kind of a subagent's or a thread's work decides it. The
+kind of work sets the model, and high stakes alone leave the kind as it is.
 
 | Harness | `clear` | `complicated` | `complex` |
 | --- | --- | --- | --- |
@@ -21,25 +22,26 @@ sets the model, and high stakes alone leave the kind as it is.
 | Copilot | `gpt-6-luna` medium | `claude-sonnet-5.5` high | `claude-opus-5.5` medium |
 | Cursor | `claude-haiku-5-5` high | `grok-4.7` high | `claude-opus-5-5` medium |
 
-A harness with no row, or one that rejects a model, takes the nearest model
-its own list offers to that kind's column, and says so. A subagent's brief is
-all it knows beyond the checkout: write down what only this session holds,
-give paths for what it can read itself, and state the job as its own to do.
+A harness with no row, or one that rejects a model, takes the nearest model its
+own list offers to that kind's column, and says so. A subagent's or a thread's
+brief is all it knows beyond the checkout: write down what only this context
+holds, give paths for what it can read itself, and state the job as its own to
+do.
 
 ## Glossary
 
-The words this repository has settled are in `GLOSSARY.md` at the root, or,
-where a `GLOSSARY-MAP.md` sits at the root, in the `GLOSSARY.md` beside each
-context's code that the map lists. Call the Skill tool with `naming-concepts`
-before naming anything the work is about.
+The words the user and the model have settled are in `GLOSSARY.md` at the root,
+or, where a `GLOSSARY-MAP.md` sits at the root, in the `GLOSSARY.md` beside each
+bounded context's code that the map lists. Work in the glossary's words. Call
+the Skill tool with `naming-concepts` where the user decides or accepts a word
+for something the work is about, since only such a word goes in.
 
 ## Claims
 
-A claim about how anything from outside this repository behaves at the version
-in use, or about what exists outside it to choose from, is read before code or
-a decision rests on it: call the Skill tool with `researching` rather than
-writing or answering from what you remember. What any engineer knows without
-checking is answered directly.
+What you know about anything outside this repository is answered directly,
+unless it may not match the version or date in use and a wrong guess would
+not show in a run made first. There, call the Skill tool with `researching`
+before code, a decision or a criterion rests on it.
 
 ## Comments
 
@@ -63,14 +65,15 @@ The lessons directory is `docs/lessons/`, and the ideation directory
 
 ## Lessons
 
-When you are about to report a problem solved and verified, or to open its
-pull request where that comes first, and no skill running the work records a
-lesson itself, ask the user once whether to call the Skill tool with
-`recording-lessons`. Ask only where whoever meets the problem next, reading
-the final code, tests and docs, would still repeat the mistake or redo a
-substantial investigation; the effort and the size of the diff count for
-nothing toward it. With nobody to answer, record nothing: the report names
-what the work taught and suggests `/recording-lessons`.
+When you are about to report a problem solved and verified, or to open its pull
+request where that comes first, and no skill running the work records a lesson
+itself, nor does the brief you work under name who records it, ask the user
+once whether to call the Skill tool with `recording-lessons`. Ask only where
+whoever meets the problem next, reading the final code, tests and docs, would
+still repeat the mistake or redo a substantial investigation; the effort and
+the size of the diff count for nothing toward it. With nobody to answer, call
+the Skill tool with `recording-lessons`, since the lesson lands with the work,
+where whoever merges it reads it.
 
 ## Forge and tracker
 
@@ -94,33 +97,9 @@ what the work taught and suggests `/recording-lessons`.
 
 What holds in every run, whatever skill or route it takes.
 
-- **Waiting.** A wait ends when the work ends, failed or not: wait for a
-  subagent or background work by ending your turn, so its end wakes you, never
-  by a loop on a result a failure never brings, and work detached from the tool
-  that started it wakes nobody. A reply sent while work still runs says what
-  still runs, so whoever started you does not take it for your result, and a
-  subagent's reply saying so of its own work is not its result either.
-- **Asking.** The user's attention goes only to what only they can decide and to
-  one-way doors; nothing a lookup settles is asked, and nothing twice. A
-  question goes through the question tool, your recommendation first, each
-  option with what it gives and costs, and a **one-way door** marked with what
-  reversing it costs; a skill decides when it asks and which questions go
-  together, never this shape. Where nobody will answer, as in a run started
-  unattended, each question but a one-way door takes your recommendation, named
-  as an assumption where whoever reads the result will see it, and a one-way
-  door stops the work where it stands, named, unless the skill says what becomes
-  of its own questions then.
 - **What others made stands.** Anything this run did not make, such as commits
   someone else pushed, their uncommitted edits, text they wrote or a process
   they started, is never forced, rewritten, stashed, stopped or removed, since
   its maker may be building on it and nothing gives it back. Where the work
   cannot go on without moving it, stop and name what is in the way.
-- **What a revert cannot undo**, such as a message to a person, a payment, or
-  data others depend on, waits on the user's word.
 - **Secrets.** A secret's value reaches nothing shown, kept or committed.
-- **Scratch.** What a run writes outside its checkout goes in a directory of
-  its own made with `mktemp -d`, under `$BB_THREAD_STORAGE` where it is set,
-  else `$TMPDIR` or `/tmp`, and is removed by the exact path `mktemp` printed,
-  never by a pattern, once nothing the run reports is in it, since other runs
-  keep theirs beside it and a full disk takes every session on the machine
-  down.
