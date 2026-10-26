@@ -15,8 +15,9 @@ export function pointInBox(box: { left: number; right: number; top: number; bott
 
 /**
  * True once the pointer has rested on `target` for `ICON_HOVER_DELAY_MS`,
- * until it moves off or leaves the thread card around it. `active` false
- * listens to nothing.
+ * until it moves off or leaves the thread card around it, or until a pointer
+ * down, a context menu or Escape dismisses it; a dismissed rest stays closed
+ * until the pointer has left `target`. `active` false listens to nothing.
  */
 export function useRestingOn(target: RefObject<HTMLElement | null>, active: boolean): boolean {
   const [resting, setResting] = useState(false);
@@ -29,6 +30,15 @@ export function useRestingOn(target: RefObject<HTMLElement | null>, active: bool
       timer = undefined;
       setResting(false);
     };
+    // `timer` stays set from the pointer's arrival on the element until `clear`, a dismissed or fired one included, so a dismissal while the pointer is elsewhere is none and a dismissed rest is not started again. None of the listeners stops or cancels its event: the click, the menu and Escape's other handlers still run.
+    const dismiss = () => {
+      if (timer === undefined) return;
+      clearTimeout(timer);
+      setResting(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dismiss();
+    };
     const onMove = (event: PointerEvent) => {
       const element = target.current;
       if (!element || event.pointerType === "touch" || !pointInBox(element.getBoundingClientRect(), event.clientX, event.clientY)) return clear();
@@ -36,9 +46,16 @@ export function useRestingOn(target: RefObject<HTMLElement | null>, active: bool
     };
     card.addEventListener("pointermove", onMove);
     card.addEventListener("pointerleave", clear);
+    card.addEventListener("pointerdown", dismiss);
+    // On the document and captured, so a handler that stops either event below it still lets this see it, and a menu opened from the keyboard on the focused row, not the card the pointer rests on, closes the tooltip too.
+    document.addEventListener("contextmenu", dismiss, true);
+    document.addEventListener("keydown", onKeyDown, true);
     return () => {
       card.removeEventListener("pointermove", onMove);
       card.removeEventListener("pointerleave", clear);
+      card.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("contextmenu", dismiss, true);
+      document.removeEventListener("keydown", onKeyDown, true);
       clear();
     };
   }, [target, active]);
