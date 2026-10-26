@@ -66,10 +66,11 @@ so the reply names each by its label, with the key value in parentheses:
 
 - Views, under Organize → Sections: By project (`project`), By machine
   (`machine`) and the Custom view (`chronological`). Write "the Custom view",
-  never "Custom" alone, since New section sits under the same heading.
+  never "Custom" alone.
 - Sorts, under Sort by: Updated at (`updated`), Created at (`created`) and
-  Alphabetical (`alpha`, by title). `chronologicalSort` sorts every view,
-  though `prefs list` describes it as "for the chronological organization".
+  Alphabetical (`alpha`, by title). `chronologicalSort` takes those three
+  values, which `prefs list` does not show, and sorts every view, though
+  `prefs list` describes it as "for the chronological organization".
   `sortDirection` is `default`, `ascending` or `descending`; the Sort by menu
   has no direction item, so the user reverses a sort by choosing the selected
   sort again.
