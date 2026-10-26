@@ -67,3 +67,25 @@ to switch the sidebar to Thread Glance, and switch only if asked:
 ```sh
 bb settings ui set sidebar.threadListProvider thread-glance/thread-glance
 ```
+
+Group by worktree is Thread Glance's, but bb's list carries out the request
+itself: its `environmentGrouping` gathers threads that share a worktree into
+one row. At `auto`, its default, it does so in project and machine view and
+not in chronological view; `true` does so in every view, `false` in none.
+Read both values before acting:
+
+```sh
+bb thread-list prefs get organizationMode
+bb thread-list prefs get environmentGrouping
+```
+
+| `environmentGrouping` | `organizationMode` project or machine | `organizationMode` chronological |
+| --- | --- | --- |
+| `auto` | already grouped: no `set` | `set environmentGrouping true` |
+| `true` | already grouped: no `set` | already grouped: no `set` |
+| `false` | `set environmentGrouping auto` | `set environmentGrouping true` |
+
+The reply says what bb's list does now and names the one change made, or
+that none was needed, since the user cannot see from the reply alone whether
+the sidebar changed. Offer no switch for this request; one line may add that
+Thread Glance's Group by worktree also gathers them under their branch.
