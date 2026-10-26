@@ -1,6 +1,6 @@
 ---
 name: thread-glance
-description: Sets the Thread Glance sidebar via `bb thread-glance prefs`, covering shelves, snooze, park, settle, manual order, project colours, compacting working threads, the order of child threads, and how the sidebar groups, sorts, hides, collapses, folds and settles threads. Use as the tool for sidebar changes with Thread Glance installed, not `bb thread-list`.
+description: Sets the Thread Glance sidebar via `bb thread-glance prefs`, covering shelves, snooze, park, settle, manual order, project colours, Thread display (full cards, compact working or all threads), Project icon only, the order of child threads, and how the sidebar groups (Group by worktree among them), sorts, hides, collapses, folds and settles threads. Use as the tool for sidebar changes with Thread Glance installed, not `bb thread-list`.
 ---
 
 # Thread Glance settings
@@ -61,7 +61,7 @@ Do not change a Thread Glance setting: the user would not see it, so
 organisation, collapse, hidden groups, row actions), run
 `bb thread-list prefs set`, reading `bb thread-list prefs list` first. For a
 request only Thread Glance can carry out (shelves, snooze, project colours,
-project icon only, automatic settling), tell the user Thread Glance is not the list in use. Offer
+Thread display, project icon only, automatic settling), tell the user Thread Glance is not the list in use. Offer
 to switch the sidebar to Thread Glance, and switch only if asked:
 
 ```sh

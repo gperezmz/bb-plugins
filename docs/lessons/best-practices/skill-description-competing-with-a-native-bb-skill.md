@@ -1,6 +1,7 @@
 ---
 title: A plugin skill whose job overlaps a bb native skill loses the choice unless its description claims it
 date: 2026-10-09
+last_updated: 2026-10-26
 category: best-practices
 module: plugins
 problem_type: best_practice
@@ -8,6 +9,7 @@ component: plugin skills
 severity: medium
 applies_when:
   - "Writing or shortening the description of a plugin skill that does what a bb native skill also claims, such as the sidebar list or AI task services"
+  - "Naming a new setting in such a description"
   - "Trialling whether a plugin skill's description still fires"
 tags: [skill-description, trigger, native-skill, thread-glance, thread-list, trialling]
 retire_when: "bb withdraws its native thread-list skill while another sidebar list is selected, or lets a skill's availability follow the selected list; check the thread-list plugin's skills and agents.configure in the bb release notes"
@@ -19,21 +21,22 @@ retire_when: "bb withdraws its native thread-list skill while another sidebar li
 
 bb ships native skills for some of what this repository's plugins replace or
 extend: thread-list for the sidebar list Thread Glance replaces, and
-bb-cloud-ai for the AI tasks openai-inference serves. Per this session's
-research on bb 0.45.0, every enabled plugin's skill descriptions sit beside
+bb-cloud-ai for the AI tasks openai-inference serves. Per the research done
+for #184 on bb 0.45.0, every enabled plugin's skill descriptions sit beside
 bb's own in every thread, and an agent picks between them from the
 descriptions alone. It cannot see which sidebar list the user has selected
 without running a command. Only a plugin's own `bb.agents.configure` filters
 its skills, so nothing withdraws thread-list while Thread Glance is the list
-in use.
+in use. bb 0.47.1 still ships thread-list's skill.
 
-When thread-glance's description was shortened (#184, pending as of
-2026-10-09), trials against bb's thread-list showed that a description saying
-only what the skill does loses to thread-list. The old description picked
-thread-glance on "Group my sidebar by machine" in 0 of 2 runs. The shortest
-rewrite picked it in 1 of 2. Adding "when Thread Glance is its list" lifted
-grouping to 2 of 2, but dropped "collapses" and "folds", and those prompts
-then went to thread-list.
+When thread-glance's description was shortened (#184), trials against bb's
+thread-list showed that a description saying only what the skill does loses
+to thread-list. When #345 named three new settings in it, a first draft
+listed "Group by worktree" beside the other settings, ahead of "and how the
+sidebar groups, sorts, hides, collapses, folds and settles threads". "Group my
+sidebar by machine instead of by project." then went to thread-list in 5 of 5
+sonnet runs, where the description before it kept that prompt on
+thread-glance in 3 of 3.
 
 ## Guidance
 
@@ -41,39 +44,63 @@ then went to thread-list.
   things:
   - It says the skill is the one to use while its plugin is installed.
   - It names the native command it displaces.
-  - It names every kind of request the native skill would also catch.
+  - It names every kind of request the native skill would also catch, by the
+    general verb (*groups*, *sorts*, *hides*).
 
-  The wording in
-  [`plugins/thread-glance/skills/thread-glance/SKILL.md:3`](https://github.com/gperezmz/bb-plugins/blob/thread-glance/v0.11.2/plugins/thread-glance/skills/thread-glance/SKILL.md)
-  reads awkwardly and is kept on purpose, because each smoother wording
-  tried lost trials:
+  In #345's trials the clause and the verbs together carried the routing,
+  not the names of settings. The description from before #345, with both and
+  none of the new names, already won the three new settings' prompts in 24 of
+  24 runs on opus, sonnet and haiku. A description with neither, cut to
+  "shelves, snooze, park and project colours", reached thread-glance in none
+  of 18 runs, 17 of them going to thread-list. Removing the clause alone did
+  not lose on opus, 12 of 12; no trial removed the verbs alone.
 
-  ```text
-  Sets how the sidebar groups, sorts, hides, collapses, folds and settles threads via `bb thread-glance prefs`. Use as the tool for sidebar changes with Thread Glance installed, not `bb thread-list`.
-  ```
+- Naming one more setting can take an earlier prompt away, so a rewording is
+  trialled on the old prompts as well as the new. Why the first #345 wording
+  lost "by machine" is not settled: three rewordings each held it 3 of 3 on
+  sonnet, two of them still listing "Group by worktree" as a peer item, and
+  one of those differs from the losing wording only by "for every sidebar
+  change". The wording kept in
+  `plugins/thread-glance/skills/thread-glance/SKILL.md` reads awkwardly on
+  purpose, "how the sidebar groups (Group by worktree among them), sorts,
+  hides, collapses, folds and settles threads", and held 6 of 6 on sonnet.
 
-- A trigger trial for such a skill installs the competing native `SKILL.md`
-  beside it. In bb 0.45.0 these are under
-  `server/dist/builtin-plugins/<plugin>/skills/` in the bb-app package. A
-  trial without the competitor has nothing to lose to and always passes.
-- The trial puts a `bb` shim on PATH that logs each command and prints
-  canned output, since `trialling-skills` runs its sessions with
-  `--permission-mode bypassPermissions` and a real
-  `bb thread-glance prefs set` changes the user's sidebar.
-- The body tells the agent how to check which list is active, at
-  `plugins/thread-glance/skills/thread-glance/SKILL.md:9`.
+- A rewording is trialled against the competing native `SKILL.md` installed
+  beside it, on the prompts it adds and on the earlier ones it could take
+  away, since a trial without the competitor has nothing to lose to. bb ships
+  the native skills under `server/dist/builtin-plugins/<plugin>/skills/` in
+  the bb-app package.
+
+- The trial puts a `bb` stand-in first on PATH, since the sessions run with
+  `--permission-mode bypassPermissions` and a real `prefs set` changes the
+  user's sidebar. The stand-in logs each command, keeps the values set and
+  rejects the values bb rejects: one that answers every command with success
+  lets a run report a change made with a value bb would reject.
+
+- Under Claude Code, a fixture holding the two skills and none of the user's
+  own, only Claude Code's bundled ones, was a scratch directory with
+  `.claude/skills/<name>/SKILL.md`, run as
+  `claude -p "<prompt>" --setting-sources project --strict-mcp-config --permission-mode bypassPermissions --output-format stream-json --verbose < /dev/null`;
+  the skill that fired is the `Skill` tool call in the stream. Without
+  `< /dev/null`, a piped `claude -p` writes a "no stdin data received" warning
+  to stderr, and a stream file that merges stderr then fails `jq`.
+
+- The body tells the agent how to check which list is active, with
+  `bb settings ui get sidebar.threadListProvider`.
 
 ## Why This Matters
 
 The mistake fails silently. `bb thread-list prefs` succeeds, so the agent
 reports the change done, while the sidebar the user sees stays as it was.
 Nothing errors, so only a trial run against the competitor shows the
-description losing.
+description losing, and only a trial of the old prompts shows a new name
+taking one away.
 
 ## When to Apply
 
 - Rewording or trimming the description of any plugin skill whose subject a
   bb native skill also covers.
+- Naming a new setting or feature in such a description.
 - Adding a plugin skill for something bb already has a native skill for.
 - Trialling such a skill's trigger.
 
@@ -88,7 +115,8 @@ Endpoints.
 
 ## Related
 
-- #184 (pending as of 2026-10-09): the rewrite and the trial table in its
-  description.
+- #184: the first rewrite against the native skills, and its trial table.
+- #345: the description naming Thread display, Project icon only and Group by
+  worktree; its trial table is on the pull request that closes it.
 - #183: the `AGENTS.md` rule to write skills and agent tool descriptions with
   `writing-for-agents`.
