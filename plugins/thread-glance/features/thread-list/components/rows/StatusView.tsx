@@ -29,7 +29,8 @@ export function StatusView({ status, className }: { status: StatusSlot; classNam
   return (
     <span
       data-status={status.kind}
-      aria-label={status.ariaLabel}
+      role={status.kind === "plugin" ? "img" : undefined}
+      aria-label={status.kind === "plugin" ? `${status.ariaLabel}, ${status.label}` : status.ariaLabel}
       className={cn(
         "flex max-w-full min-w-0 items-center justify-end gap-1 text-[10px] leading-none font-medium",
         TONE_CLASS[status.tone],

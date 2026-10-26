@@ -137,7 +137,8 @@ describe("a status another plugin set on a row", () => {
     expect(slot("a")).toBe("5m");
     expect(icon("a")).toBe("Box");
     const status = card("a").querySelector("[data-status=plugin]")!;
-    expect(status.getAttribute("aria-label")).toBe("Sandbox ready");
+    expect(status.getAttribute("aria-label")).toBe("Sandbox ready, 5m");
+    expect(within(card("a")).getByRole("img", { name: "Sandbox ready, 5m" })).toBe(status);
     expect(status.className).toContain("text-[color:var(--tg-unread)]");
     act(() => m.host.update({ rowStatuses: new Map() }));
     await flush();

@@ -81,6 +81,18 @@ describe("AC18: the Children chip", () => {
   });
 });
 
+describe("AC18: a status another plugin set", () => {
+  it("is left out of a child row, which keeps its own status or age", async () => {
+    const m = await mount({ threads: family() });
+    act(() => m.host.update({ rowStatuses: new Map([["c5", { icon: "Box", label: "Sandbox ready", tone: "success" }]]) }));
+    fireEvent.click(chip("p"));
+    await flush();
+    expect(childRow("c5")).not.toBeNull();
+    expect(document.querySelector("[data-child-id] [data-status=plugin]")).toBeNull();
+    expect(childRow("c5").querySelector("[data-status=age]")).not.toBeNull();
+  });
+});
+
 describe("AC18: a closed child list", () => {
   it("shows the children with a status when Show children that need attention is on, and none when it is off", async () => {
     const on = await mount({ threads: family() });

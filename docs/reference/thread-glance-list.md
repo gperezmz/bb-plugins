@@ -186,7 +186,7 @@ The 80 px, right-aligned slot shows one thing, the first that applies:
 1. "Needs you" while a question or approval is pending.
 2. "Send failed" or "Queued" for the queued message.
 3. Failed, or work in flight: Working, Monitoring, Workflow, Agent, Command, Planning, Goal or Drafting.
-4. On a full or folded card, a status another plugin set on the thread's row: bb's icon in the colour of its tone, then the thread's age. Its label is in the [hover card](#hover-card) and the card's accessible name, not in the slot. A slim row and a child row do not show it.
+4. On a full or folded card, a status another plugin set on the thread's row: bb's icon in the colour of its tone, then the thread's age. Its label is in the [hover card](#hover-card) and in the slot's accessible name, but is not drawn in the slot. A slim row and a child row do not show it.
 5. The rest of the indicator's labels: Unread or Draft.
 6. Otherwise the age: "now", "Nm", "Nh", "Nd" up to 7 days, then "Nw", refreshed every minute.
 
