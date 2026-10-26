@@ -1,5 +1,6 @@
 // The Status slot drawn: a status's glyph and label in its colour. Colours are
-// bb-theme variables (see theme/theme.css), never `dark:` utilities.
+// bb-theme variables (see theme/theme.css), or the classes bb draws a plugin's
+// status in, never `dark:` utilities.
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { StatusGlyph, StatusSlot, StatusTone } from "../../model/status-slot";

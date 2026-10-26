@@ -145,6 +145,27 @@ describe("a status another plugin set on a row", () => {
     expect(icon("a")).toBeNull();
   });
 
+  it("draws each tone in the class bb's own list uses", async () => {
+    const m = await mount({
+      threads: [makeThread({ id: "d", ...fresh }), makeThread({ id: "e", ...fresh }), makeThread({ id: "r", ...fresh })],
+    });
+    act(() =>
+      m.host.update({
+        rowStatuses: new Map([
+          ["d", { icon: "Box", label: "plain" }],
+          ["e", { icon: "Box", label: "broken", tone: "error" }],
+          ["r", { icon: "Box", label: "busy", tone: "running" }],
+        ]),
+      }),
+    );
+    await flush();
+    const colour = (id: string) => card(id).querySelector("[data-status=plugin]")!.className;
+    expect(colour("d")).toContain("text-muted-foreground");
+    expect(colour("e")).toContain("text-destructive");
+    expect(colour("r")).toContain("text-success");
+    expect(colour("r")).not.toContain("text-success-foreground");
+  });
+
   it("shows on a Folded card as the icon and the age, named for assistive technology", async () => {
     const m = await mount({ threads: [makeThread({ id: "a", ...fresh })], server: { settings: { threadDisplay: "compact-all" } } });
     act(() => m.host.update({ rowStatuses: new Map([["a", sandbox]]) }));
