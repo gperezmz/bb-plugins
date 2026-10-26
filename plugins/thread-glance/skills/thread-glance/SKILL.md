@@ -59,9 +59,10 @@ the user is told where to do it instead:
 Do not change a Thread Glance setting: the user would not see it, so
 `bb thread-glance prefs set` is not run. For a request bb's list can carry out (sort,
 organisation, collapse, hidden groups, row actions), run
-`bb thread-list prefs set`, reading `bb thread-list prefs list` first. It
-does not name the values a key takes: the sort, `chronologicalSort`, takes
-`updated`, `created`, `alpha` (by title) or `none`. For a
+`bb thread-list prefs set`, reading `bb thread-list prefs list` first. Its
+descriptions leave out the sort's values: `chronologicalSort` sorts every
+view, whatever its name says, by `updated`, `created` or `alpha` (title), and
+`sortDirection` is `default`, `ascending` or `descending`. For a
 request only Thread Glance can carry out (shelves, snooze, project colours,
 Thread display, project icon only, automatic settling), tell the user Thread Glance is not the list in use. Offer
 to switch the sidebar to Thread Glance, and switch only if asked:
