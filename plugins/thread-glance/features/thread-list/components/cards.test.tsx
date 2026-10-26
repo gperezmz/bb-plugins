@@ -635,7 +635,8 @@ describe("Project icon only", () => {
         expect(screen.queryByRole("tooltip")).toBeNull();
         await stayClosedWhileResting();
         await reopenAfterLeavingAndResting();
-        fireEvent.contextMenu(card("w").querySelector("a")!);
+        // A menu opened from the keyboard lands on the focused element, which need not be this card.
+        fireEvent.contextMenu(document.body);
         expect(seen).toHaveBeenCalledTimes(2);
         await act(async () => vi.advanceTimersByTime(0));
         expect(screen.queryByRole("tooltip")).toBeNull();

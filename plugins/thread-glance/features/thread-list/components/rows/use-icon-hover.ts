@@ -47,14 +47,14 @@ export function useRestingOn(target: RefObject<HTMLElement | null>, active: bool
     card.addEventListener("pointermove", onMove);
     card.addEventListener("pointerleave", clear);
     card.addEventListener("pointerdown", dismiss);
-    card.addEventListener("contextmenu", dismiss);
-    // Captured, so a handler that stops Escape below the document still lets this see it.
+    // On the document and captured, so a handler that stops either event below it still lets this see it, and a menu opened from the keyboard on the focused row, not the card the pointer rests on, closes the tooltip too.
+    document.addEventListener("contextmenu", dismiss, true);
     document.addEventListener("keydown", onKeyDown, true);
     return () => {
       card.removeEventListener("pointermove", onMove);
       card.removeEventListener("pointerleave", clear);
       card.removeEventListener("pointerdown", dismiss);
-      card.removeEventListener("contextmenu", dismiss);
+      document.removeEventListener("contextmenu", dismiss, true);
       document.removeEventListener("keydown", onKeyDown, true);
       clear();
     };
