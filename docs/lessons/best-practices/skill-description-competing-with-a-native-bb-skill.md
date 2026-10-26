@@ -11,7 +11,8 @@ applies_when:
   - "Writing or shortening the description of a plugin skill that does what a bb native skill also claims, such as the sidebar list or AI task services"
   - "Naming a new setting in such a description"
   - "Trialling whether a plugin skill's description still fires"
-tags: [skill-description, trigger, native-skill, thread-glance, thread-list, trialling]
+  - "Writing what such a skill's body tells an agent to send to bb's own list"
+tags: [skill-description, trigger, native-skill, thread-glance, thread-list, trialling, false-green]
 retire_when: "bb withdraws its native thread-list skill while another sidebar list is selected, or lets a skill's availability follow the selected list; check the thread-list plugin's skills and agents.configure in the bb release notes"
 ---
 
@@ -58,9 +59,8 @@ thread-glance in 3 of 3.
 - Naming one more setting can take an earlier prompt away, so a rewording is
   trialled on the old prompts as well as the new. Why the first #345 wording
   lost "by machine" is not settled: three rewordings each held it 3 of 3 on
-  sonnet, two of them still listing "Group by worktree" as a peer item, and
-  one of those differs from the losing wording only by "for every sidebar
-  change". The wording kept in
+  sonnet, one of them still listing "Group by worktree" as a peer item and
+  differing from the losing wording only by "for every sidebar change". The wording kept in
   `plugins/thread-glance/skills/thread-glance/SKILL.md` reads awkwardly on
   purpose, "how the sidebar groups (Group by worktree among them), sorts,
   hides, collapses, folds and settles threads", and held 6 of 6 on sonnet.
@@ -74,8 +74,27 @@ thread-glance in 3 of 3.
 - The trial puts a `bb` stand-in first on PATH, since the sessions run with
   `--permission-mode bypassPermissions` and a real `prefs set` changes the
   user's sidebar. The stand-in logs each command, keeps the values set and
-  rejects the values bb rejects: one that answers every command with success
-  lets a run report a change made with a value bb would reject.
+  rejects the values bb rejects, for every key of the native list, written
+  from its schema in the bb-app package's
+  `server/dist/builtin-plugins/thread-list/dist/server.js`
+  (the `definePreference` calls): one that answers every command with success
+  lets a run report a change made with a value bb would reject, and one that
+  checks only the keys under change passes the earlier prompts that send a
+  bad value to another key. #369's stand-in checked `organizationMode`,
+  `environmentGrouping` and two booleans, and took any value for the other
+  keys; in #371 one written from the schema showed
+  "Sort my sidebar threads by title." sending `chronologicalSort title`,
+  which bb 0.47.1 rejects, on the base as on the head, since the descriptions
+  `bb thread-list prefs list` prints leave the sort's values out.
+
+- Where the body sends a request to `bb thread-list prefs set`, each value it
+  names is a claim about what bb's list then shows, read in the bb-app
+  package's `server/dist/builtin-plugins/thread-list/dist/app.js`, not only that the schema accepts it. In bb
+  0.47.1 the schema accepts `chronologicalSort none`, which the list sorts as
+  `updated`, so a body naming `none` let an agent report an unsorted sidebar
+  that never changed, in a sonnet run of #371's review; and the list ignores `environmentGrouping` while
+  `groupByReadStatus` is `true`, so "already grouped" is false there whatever
+  `environmentGrouping` holds.
 
 - Under Claude Code, a fixture holding the two skills and none of the user's
   own, only Claude Code's bundled ones, was a scratch directory with
@@ -103,6 +122,7 @@ taking one away.
 - Naming a new setting or feature in such a description.
 - Adding a plugin skill for something bb already has a native skill for.
 - Trialling such a skill's trigger.
+- Naming in such a skill's body a value for an agent to send to bb's own list.
 
 ## Examples
 
@@ -118,5 +138,8 @@ Endpoints.
 - #184: the first rewrite against the native skills, and its trial table.
 - #345: the description naming Thread display, Project icon only and Group by
   worktree; its trial table is on the pull request that closes it.
+- #371: the body answering group by worktree under bb's own list, trialled
+  with a stand-in written from bb 0.47.1's schema; its trial is on the pull
+  request that closes it.
 - #183: the `AGENTS.md` rule to write skills and agent tool descriptions with
   `writing-for-agents`.
