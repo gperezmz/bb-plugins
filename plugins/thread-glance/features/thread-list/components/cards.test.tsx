@@ -186,6 +186,18 @@ describe("a status another plugin set on a row", () => {
     expect(pulse("r")?.querySelector("[data-icon=Box]")?.className).toContain("animate-shine-icon");
   });
 
+  // keeps: bb's CSS drops the shine's mask (`[aria-hidden="true"] .animate-shine-icon { mask-image: none }`),
+  // so a shining icon under an aria-hidden ancestor draws no shine in a running bb while jsdom still sees the
+  // class; nothing else run on every change catches that, and the shine is what a running status promises.
+  it("keeps a running status's shining icon out from under an aria-hidden ancestor, where bb's CSS turns the shine off", async () => {
+    const m = await mount({ threads: [makeThread({ id: "r", ...fresh })] });
+    act(() => m.host.update({ rowStatuses: new Map([["r", busy]]) }));
+    await flush();
+    const icon = card("r").querySelector("[data-status-slot] [data-status=plugin] .animate-shine-icon");
+    expect(icon).not.toBeNull();
+    expect(icon!.parentElement!.closest('[aria-hidden="true"]')).toBeNull();
+  });
+
   it("shows on a Folded card as the icon and the age, named for assistive technology", async () => {
     const m = await mount({ threads: [makeThread({ id: "a", ...fresh })], server: { settings: { threadDisplay: "compact-all" } } });
     act(() => m.host.update({ rowStatuses: new Map([["a", sandbox]]) }));
