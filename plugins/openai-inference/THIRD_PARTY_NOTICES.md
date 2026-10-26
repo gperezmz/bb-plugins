@@ -11,4 +11,4 @@ OpenAI-compatible inference's built files (`dist/`) include code from these pack
 | shebang-command | 2.0.0 | MIT | Copyright (c) Kevin Mårtensson <kevinmartensson@gmail.com> (github.com/kevva) | dist/host.js |
 | shebang-regex | 3.0.0 | MIT | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | dist/host.js |
 | which | 2.0.2 | ISC | Copyright (c) Isaac Z. Schlueter and Contributors | dist/host.js |
-| zod | 4.6.5 | MIT | Copyright (c) 2025 Colin McDonnell | dist/host.js, dist/server.js |
+| zod | 4.6.7 | MIT | Copyright (c) 2025 Colin McDonnell | dist/host.js, dist/server.js |
