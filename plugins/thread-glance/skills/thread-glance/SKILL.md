@@ -72,9 +72,13 @@ Group by worktree is Thread Glance's, but bb's list carries out the request
 itself: its `environmentGrouping` gathers threads that share a worktree into
 one row. At `auto`, its default, it does so in project and machine view and
 not in chronological view; `true` does so in every view, `false` in none.
-Read both values before acting:
+While `groupByReadStatus` is `true`, bb's list ignores `environmentGrouping`
+and groups nothing by worktree: say so, and set nothing unless the user asks
+to turn By read status off. Otherwise the table below decides. Read the three
+values before acting:
 
 ```sh
+bb thread-list prefs get groupByReadStatus
 bb thread-list prefs get organizationMode
 bb thread-list prefs get environmentGrouping
 ```
