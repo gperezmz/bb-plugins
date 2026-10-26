@@ -323,6 +323,17 @@ describe("autosave", () => {
     expect(screen.queryByText("Keep pinned as full cards")).toBeNull();
   });
 
+  it("shows Project icon only whatever Thread display is, and sends it as named", async () => {
+    fakeTimers();
+    const server = fakeServer();
+    openPage(server);
+    expect(toggle("Project icon only").getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle("Project icon only"));
+    await settle(SAVE_DELAY_MS);
+    expect(writes(server)).toEqual([{ patch: { projectIconOnly: true } }]);
+    expect(toggle("Project icon only").getAttribute("aria-checked")).toBe("true");
+  });
+
   it("sends the choice fields as they are named", async () => {
     fakeTimers();
     const server = fakeServer();

@@ -500,3 +500,60 @@ describe("project icons", () => {
     expect(card("a").querySelector("[data-monogram]")?.textContent).toBe("A");
   });
 });
+
+describe("Project icon only", () => {
+  const rows = [
+    makeThread({ id: "w", ...fresh, ...working, indicator: "runtime" }),
+    makeThread({ id: "i", ...fresh }),
+  ];
+
+  it("draws every folded card with the project's icon and no name, working ones included", async () => {
+    await mount({ threads: rows, server: { settings: { threadDisplay: "compact-all", workingShelf: true, projectIconOnly: true } } });
+    for (const id of ["w", "i"]) {
+      expect(card(id).getAttribute("data-card")).toBe("folded");
+      expect(card(id).querySelector("[data-project-name]")).toBeNull();
+      expect(card(id).querySelector("[data-monogram]")?.textContent).toBe("A");
+      expect(card(id).querySelector("[data-title]")).not.toBeNull();
+    }
+  });
+
+  it("leaves folded cards as they are with the setting off", async () => {
+    await mount({ threads: rows, server: { settings: { threadDisplay: "compact-working" } } });
+    expect(card("w").querySelector("[data-project-name]")?.textContent).toBe("Alpha");
+  });
+
+  it("keeps the name on a full card", async () => {
+    await mount({ threads: rows, server: { settings: { threadDisplay: "compact-working", projectIconOnly: true } } });
+    expect(card("w").querySelector("[data-project-name]")).toBeNull();
+    expect(card("i").getAttribute("data-card")).toBe("full");
+    expect(card("i").querySelector("[data-project-name]")?.textContent).toBe("Alpha");
+  });
+
+  it("still names the project in the hover card", async () => {
+    await mount({ threads: [rows[0]!], server: { settings: { threadDisplay: "compact-working", projectIconOnly: true } } });
+    fireEvent.keyDown(document.body, { key: "Tab" });
+    await act(async () => document.querySelector<HTMLElement>('a[data-sidebar-thread-id="w"]')!.focus());
+    await flush();
+    expect(document.querySelector("[data-hover-card]")?.textContent).toContain("Alpha");
+  });
+
+  it("names the project once the pointer rests on the icon, and not when it rests elsewhere on the card", async () => {
+    await mount({ threads: [rows[0]!], server: { settings: { threadDisplay: "compact-working", projectIconOnly: true } } });
+    vi.useFakeTimers();
+    try {
+      const icon = card("w").querySelector<HTMLElement>("[data-monogram]")!.parentElement!;
+      vi.spyOn(icon, "getBoundingClientRect").mockReturnValue({ left: 10, right: 22, top: 10, bottom: 22, width: 12, height: 12, x: 10, y: 10, toJSON: () => ({}) });
+      fireEvent.pointerMove(card("w"), { clientX: 100, clientY: 15 });
+      await act(async () => vi.advanceTimersByTime(1000));
+      expect(screen.queryByRole("tooltip")).toBeNull();
+      fireEvent.pointerMove(card("w"), { clientX: 15, clientY: 15 });
+      await act(async () => vi.advanceTimersByTime(1000));
+      expect(screen.getByRole("tooltip").textContent).toBe("Alpha");
+      fireEvent.pointerMove(card("w"), { clientX: 100, clientY: 15 });
+      await act(async () => vi.advanceTimersByTime(10));
+      expect(screen.queryByRole("tooltip")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
