@@ -32,10 +32,10 @@ async function refusal(harness: Harness, argv: string[]) {
 }
 
 describe("bb thread-glance prefs", () => {
-  it("lists all 18 keys with a value and a description, as lines and as JSON", async () => {
+  it("lists all 19 keys with a value and a description, as lines and as JSON", async () => {
     const harness = await load();
     const lines = (await harness.behavior.runCli(["prefs", "list"])).stdout?.split("\n") ?? [];
-    expect(SETTING_KEYS).toHaveLength(18);
+    expect(SETTING_KEYS).toHaveLength(19);
     expect(lines.map((line) => line.split("\t")[0])).toEqual(SETTING_KEYS);
     for (const line of lines) {
       const [key, value, description] = line.split("\t");
@@ -74,6 +74,14 @@ describe("bb thread-glance prefs", () => {
     expect((await harness.behavior.runCli(["prefs", "set", "groupByWorktree", "true"])).stdout).toBe("groupByWorktree = true");
     expect((await stored(harness)).groupByWorktree).toBe(true);
     expect((await refusal(harness, ["prefs", "set", "groupByWorktree", "yes"])).code).toBe("invalid_preference_value");
+  });
+
+  it("reads and sets Project icon only", async () => {
+    const harness = await load();
+    expect((await harness.behavior.runCli(["prefs", "get", "projectIconOnly"])).stdout).toBe("false");
+    expect((await harness.behavior.runCli(["prefs", "set", "projectIconOnly", "true"])).stdout).toBe("projectIconOnly = true");
+    expect((await stored(harness)).projectIconOnly).toBe(true);
+    expect((await refusal(harness, ["prefs", "set", "projectIconOnly", "yes"])).code).toBe("invalid_preference_value");
   });
 
   it("reads and sets all three Thread display values and both keep options", async () => {

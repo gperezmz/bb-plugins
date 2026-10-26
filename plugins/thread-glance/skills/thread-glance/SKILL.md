@@ -61,7 +61,7 @@ Do not change a Thread Glance setting: the user would not see it, so
 organisation, collapse, hidden groups, row actions), run
 `bb thread-list prefs set`, reading `bb thread-list prefs list` first. For a
 request only Thread Glance can carry out (shelves, snooze, project colours,
-automatic settling), tell the user Thread Glance is not the list in use. Offer
+project icon only, automatic settling), tell the user Thread Glance is not the list in use. Offer
 to switch the sidebar to Thread Glance, and switch only if asked:
 
 ```sh

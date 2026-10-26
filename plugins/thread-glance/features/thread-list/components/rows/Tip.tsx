@@ -10,18 +10,21 @@ export function Tip({
   children,
   side = "top",
   className,
+  open,
 }: {
   /** The tooltip's content; null draws no tooltip. */
   label: ReactNode;
   children: ReactNode;
   side?: "top" | "right" | "bottom" | "left";
   className?: string;
+  /** Holds the tooltip open or closed itself, for a trigger that never takes the pointer; unset, hovering the trigger decides. */
+  open?: boolean;
 }) {
   const scope = usePortalScopeProps();
   if (label === null) return <>{children}</>;
   return (
     <TooltipPrimitive.Provider delayDuration={400} skipDelayDuration={150}>
-      <TooltipPrimitive.Root>
+      <TooltipPrimitive.Root open={open}>
         <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
         <TooltipPrimitive.Portal>
           <TooltipPrimitive.Content

@@ -129,7 +129,7 @@ A row of three lines: the project's icon and name with the status slot, the titl
 _Avoid_: Big row, expanded row
 
 **Folded card**:
-A row of one line: project name and title, the children chip, an unpin button and the live status. Used for every row of Working and for the threads Thread display folds; it unfolds when the thread fails or needs you, and under Compact working threads also when its work ends.
+A row of one line: project name (or only its icon under Project icon only) and title, the children chip, an unpin button and the live status. Used for every row of Working and for the threads Thread display folds; it unfolds when the thread fails or needs you, and under Compact working threads also when its work ends.
 _Avoid_: Compact row, collapsed card
 
 **Thread display**:
@@ -141,6 +141,10 @@ Under Compact all threads, pinned threads draw as full cards. It shows only unde
 
 **Keep woke as full cards**:
 Under Compact all threads, a woke thread draws as a full card until you open it. It shows only under Compact all threads.
+
+**Project icon only**:
+The setting that draws a folded card with its project's icon and no name; the name shows while the pointer rests on the icon and in the hover card. It applies to every folded card, whatever Thread display folded it.
+_Avoid_: Icon-only mode, hide project name
 
 **Slim row**:
 A one-line row, 32 px tall, showing project name, title, the children chip and the shelf's label, with a button to restore the thread on hover. Used on Parked, Snoozed and Settled.
