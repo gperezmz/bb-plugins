@@ -200,7 +200,7 @@ Working-type labels add " · 5m" from when the thread was first seen working. Th
 | Workflow, Agent, Command, Monitoring, Planning, Goal | A shining icon | Sky |
 | Draft, Drafting | Pencil | Amber |
 | Unread | Dot | Emerald |
-| A plugin's status | The icon the plugin chose | bb's own, by tone: grey for default, destructive red for error, green and shining for running, olive for success |
+| A plugin's status | The icon the plugin chose | bb's own, by tone: grey for default, destructive red for error, green, pulsing and shining for running, olive for success |
 
 Colours follow bb's theme, light or dark, not the operating system's.
 
