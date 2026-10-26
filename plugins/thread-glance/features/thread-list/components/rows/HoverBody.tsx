@@ -116,8 +116,9 @@ export function HoverBody({ row }: { row: RowView }) {
             <HarnessLogo providerId={thread.providerId} />
             {harness}
             {status.glyph === null ? null : (
-              <span className={cn("inline-flex items-center", TONE_CLASS[status.tone])} title={status.label}>
+              <span className={cn("inline-flex items-center gap-1", TONE_CLASS[status.tone])} title={status.kind === "plugin" ? status.ariaLabel : status.label}>
                 <GlyphMark glyph={status.glyph} />
+                {status.kind === "plugin" ? <span>{status.ariaLabel}</span> : null}
               </span>
             )}
           </span>

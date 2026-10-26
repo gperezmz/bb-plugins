@@ -1,7 +1,7 @@
 // The list model: bb's threads, the server's lifecycle rows and the device's
 // settings turned into shelves of items. One pure function builds it; the
 // store runs it when an input changes and keeps whatever did not change.
-import type { PluginSidebarProject, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import type { PluginSidebarProject, PluginSidebarThread, PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
 import {
   liftedIds,
   nextWakeAt,
@@ -61,6 +61,8 @@ export interface RowView {
   /** Another split pane shows the thread. */
   openElsewhere: boolean;
   hasDraft: boolean;
+  /** The status another plugin set on the thread's row, or null. */
+  rowStatus: PluginSidebarThreadRowStatus | null;
   children: ChildrenInfo | null;
   /** The children drawn under the card now, in order: all while the list is open, else the path to the open thread and the ones needing attention. */
   shownChildIds: readonly string[];
@@ -148,6 +150,8 @@ export interface ModelInputs {
   scope: Scope;
   activeThreadId: string | null;
   draftIds: ReadonlySet<string>;
+  /** The statuses other plugins set on rows, by thread id. */
+  rowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
   /** Threads other split panes show. */
   openElsewhereIds: ReadonlySet<string>;
   /** Threads opened while their own question waits, until it clears (see `questionsSeen`). */
@@ -387,6 +391,7 @@ export function buildModel(inputs: ModelInputs): ListModel {
       focused: thread.id === activeThreadId,
       openElsewhere: inputs.openElsewhereIds.has(thread.id) && thread.id !== activeThreadId,
       hasDraft: inputs.draftIds.has(thread.id),
+      rowStatus: inputs.rowStatuses.get(thread.id) ?? null,
       children,
       shownChildIds:
         children === null

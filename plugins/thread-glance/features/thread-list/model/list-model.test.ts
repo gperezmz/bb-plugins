@@ -20,6 +20,7 @@ function inputs(patch: Partial<ModelInputs> & Pick<ModelInputs, "threads">): Mod
     scope: [],
     activeThreadId: null,
     draftIds: new Set(),
+    rowStatuses: new Map(),
     openElsewhereIds: new Set(),
     seenQuestionIds: new Set(),
     now: NOW,

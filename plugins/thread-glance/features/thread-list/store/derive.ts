@@ -1,6 +1,6 @@
 // The list store's derive step: the inputs the list is drawn from, and the
 // model built from them with whatever did not change kept as it was.
-import type { PluginSidebarProject, PluginSidebarSplitLayout, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import type { PluginSidebarProject, PluginSidebarSplitLayout, PluginSidebarThread, PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
 import type { LifecycleRow, Shelf } from "@/shared/lifecycle";
 import type { Settings } from "@/shared/settings";
 import { buildModel, SETTLED_FIRST_PAGE, type DragPreview, type ListModel, type RowView } from "../model/list-model";
@@ -14,6 +14,7 @@ export interface HostData {
   threads: readonly PluginSidebarThread[];
   projects: readonly PluginSidebarProject[];
   draftIds: ReadonlySet<string>;
+  rowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
   splitLayout: PluginSidebarSplitLayout | null;
 }
 
@@ -22,6 +23,7 @@ export const NO_HOST: HostData = {
   threads: [],
   projects: [],
   draftIds: new Set(),
+  rowStatuses: new Map(),
   splitLayout: null,
 };
 
@@ -80,6 +82,7 @@ export function derive(inputs: ListInputs, previous: ListModel | null): ListMode
     scope: scopeIn(inputs),
     activeThreadId: inputs.activeThreadId,
     draftIds: inputs.host.draftIds,
+    rowStatuses: inputs.host.rowStatuses,
     openElsewhereIds: openElsewhere(inputs.host.splitLayout),
     seenQuestionIds: inputs.seenQuestionIds,
     now: inputs.now,

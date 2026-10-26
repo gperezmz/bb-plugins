@@ -125,6 +125,90 @@ describe("AC17: the Status slot", () => {
   });
 });
 
+describe("a status another plugin set on a row", () => {
+  const sandbox = { icon: "Box", label: "Sandbox ready", tone: "success" } as const;
+  const icon = (id: string) => card(id).querySelector("[data-status-slot] [data-status] [data-icon]")?.getAttribute("data-icon") ?? null;
+
+  it("shows on a Full card as bb's icon in its colour with the age beside it, and follows the host's updates", async () => {
+    const m = await mount({ threads: [makeThread({ id: "a", ...fresh })] });
+    act(() => m.host.update({ rowStatuses: new Map([["a", sandbox]]) }));
+    await flush();
+    expect(card("a").getAttribute("data-card")).toBe("full");
+    expect(slot("a")).toBe("5m");
+    expect(icon("a")).toBe("Box");
+    const status = card("a").querySelector("[data-status=plugin]")!;
+    expect(status.getAttribute("aria-label")).toBe("Sandbox ready, 5m");
+    expect(within(card("a")).getByRole("img", { name: "Sandbox ready, 5m" })).toBe(status);
+    expect(status.className).toContain("text-success-foreground");
+    act(() => m.host.update({ rowStatuses: new Map() }));
+    await flush();
+    expect(icon("a")).toBeNull();
+  });
+
+  it("draws each tone in the class bb's own list uses", async () => {
+    const m = await mount({
+      threads: [makeThread({ id: "d", ...fresh }), makeThread({ id: "e", ...fresh }), makeThread({ id: "r", ...fresh })],
+    });
+    act(() =>
+      m.host.update({
+        rowStatuses: new Map([
+          ["d", { icon: "Box", label: "plain" }],
+          ["e", { icon: "Box", label: "broken", tone: "error" }],
+          ["r", { icon: "Box", label: "busy", tone: "running" }],
+        ]),
+      }),
+    );
+    await flush();
+    const colour = (id: string) => card(id).querySelector("[data-status=plugin]")!.className;
+    expect(colour("d")).toContain("text-muted-foreground");
+    expect(colour("e")).toContain("text-destructive");
+    expect(colour("r")).toContain("text-success");
+    expect(colour("r")).not.toContain("text-success-foreground");
+  });
+
+  it("shows on a Folded card as the icon and the age, named for assistive technology", async () => {
+    const m = await mount({ threads: [makeThread({ id: "a", ...fresh })], server: { settings: { threadDisplay: "compact-all" } } });
+    act(() => m.host.update({ rowStatuses: new Map([["a", sandbox]]) }));
+    await flush();
+    expect(card("a").getAttribute("data-card")).toBe("folded");
+    expect(icon("a")).toBe("Box");
+    expect(card("a").querySelector("[data-status-slot] [data-status=plugin]")?.textContent).toBe("5mSandbox ready, 5m");
+    expect(card("a").querySelector("[data-status-slot] [data-status=plugin] [aria-hidden]:not([data-icon])")?.textContent).toBe("5m");
+  });
+
+  it("gives way to Needs you, Send failed, Queued, working and failed", async () => {
+    const m = await mount({
+      threads: [
+        makeThread({ id: "ask", ...fresh, hasPendingInteraction: true, indicator: "waiting-for-input" }),
+        makeThread({ id: "failedq", ...fresh, queuedWork: "failed" }),
+        makeThread({ id: "queued", ...fresh, queuedWork: "waiting" }),
+        makeThread({ id: "working", ...fresh, ...working, indicator: "runtime" }),
+        makeThread({ id: "failed", ...fresh, indicator: "unread-error" }),
+      ],
+    });
+    const ids = ["ask", "failedq", "queued", "working", "failed"];
+    act(() => m.host.update({ rowStatuses: new Map(ids.map((id) => [id, sandbox])) }));
+    await flush();
+    expect(ids.map(slot)).toEqual(["Needs you", "Send failed", "Queued", "Working", "Failed"]);
+    expect(ids.map(icon)).not.toContain("Box");
+  });
+
+  it("leaves a Slim row with its shelf's label and status", async () => {
+    const old = { createdAt: NOW - 5 * DAY, updatedAt: NOW - 4 * DAY, latestAttentionAt: NOW - 4 * DAY };
+    const m = await mount({
+      threads: [makeThread({ id: "parked", ...old }), makeThread({ id: "settled", ...old, indicator: "unread-success" })],
+      server: { rows: { parked: parkedRow(NOW - 2 * DAY), settled: settledRow(NOW - DAY, "manual") }, settings: { inactiveShelf: false } },
+    });
+    for (const label of ["Parked (1)", "Settled (1)"]) fireEvent.click(screen.getByRole("button", { name: label }));
+    act(() => m.host.update({ rowStatuses: new Map(["parked", "settled"].map((id) => [id, sandbox])) }));
+    await flush();
+    for (const id of ["parked", "settled"]) expect(card(id).getAttribute("data-card")).toBe("slim");
+    expect(card("parked").textContent).toContain("Waiting 2d");
+    expect(card("settled").textContent).toContain("Unread");
+    expect(document.querySelector("[data-status=plugin]")).toBeNull();
+  });
+});
+
 describe("AC17: the Folded card", () => {
   it("folds a working thread to one line with Compact working threads on, and unfolds when the turn ends", async () => {
     const m = await mount({

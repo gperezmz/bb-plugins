@@ -151,7 +151,7 @@ A one-line row, 32 px tall, showing project name, title, the children chip and t
 _Avoid_: Thin row, mini row
 
 **Status slot**:
-The 80 px right-aligned part of a card that shows one thing, the first that applies: Needs you, Send failed or Queued, the indicator's label, or else the thread's age.
+The 80 px right-aligned part of a card that shows one thing, the first that applies: Needs you, Send failed or Queued, a failure or work in flight, on a full or folded card a status another plugin set on the thread's row, the rest of the indicator's labels, or else the thread's age.
 _Avoid_: Trailing slot, status column
 
 **Children chip**:

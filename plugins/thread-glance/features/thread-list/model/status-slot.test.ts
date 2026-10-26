@@ -9,6 +9,7 @@ const base: StatusInput = {
   indicator: "none",
   indicatorLabel: null,
   hasDraft: false,
+  rowStatus: null,
   workingSince: null,
   lastActivityAt: NOW - 3 * 60 * MIN,
   now: NOW,
@@ -99,5 +100,38 @@ describe("glyphs and tones", () => {
     expect(slot({ indicator: "plan-mode" })).toMatchObject({ tone: "working", glyph: { kind: "icon", shine: true } });
     expect(slot({ indicator: "draft" })).toMatchObject({ tone: "draft", glyph: { kind: "icon", name: "Edit" } });
     expect(slot({ indicator: "unread-success" })).toMatchObject({ tone: "unread", glyph: { kind: "dot" } });
+  });
+});
+
+describe("a status another plugin set", () => {
+  const sandbox = { icon: "Box", label: "Sandbox ready", tone: "success" } as const;
+
+  it("takes the slot from an idle thread, an unread result and a draft, with the age beside its icon", () => {
+    for (const patch of [{}, { indicator: "unread-success" as const }, { hasDraft: true }]) {
+      expect(slot({ ...patch, rowStatus: sandbox })).toMatchObject({
+        kind: "plugin",
+        label: "3h",
+        ariaLabel: "Sandbox ready",
+        tone: "bb-success",
+        glyph: { kind: "icon", name: "Box" },
+      });
+    }
+  });
+
+  it("gives each tone bb's colour, and a shimmer to running", () => {
+    expect(slot({ rowStatus: { icon: "Box", label: "x" } })).toMatchObject({ tone: "muted", glyph: { name: "Box" } });
+    expect(slot({ rowStatus: { icon: "Box", label: "x", tone: "error" } }).tone).toBe("bb-error");
+    expect(slot({ rowStatus: { icon: "Box", label: "x", tone: "running" } })).toMatchObject({ tone: "bb-running", glyph: { shine: true } });
+  });
+
+  it("yields to a question, a failed or waiting queued message, work in flight and a failure", () => {
+    expect(slot({ rowStatus: sandbox, hasPendingInteraction: true }).label).toBe("Needs you");
+    expect(slot({ rowStatus: sandbox, queuedWork: "failed" }).label).toBe("Send failed");
+    expect(slot({ rowStatus: sandbox, queuedWork: "waiting" }).label).toBe("Queued");
+    expect(slot({ rowStatus: sandbox, indicator: "runtime" }).label).toBe("Working");
+    expect(slot({ rowStatus: sandbox, indicator: "runtime", hasDraft: true }).label).toBe("Drafting");
+    expect(slot({ rowStatus: sandbox, indicator: "workflow" }).label).toBe("Workflow");
+    expect(slot({ rowStatus: sandbox, indicator: "unread-error" }).label).toBe("Failed");
+    expect(slot({ rowStatus: sandbox, indicator: "waiting-for-input" }).label).toBe("Needs you");
   });
 });
