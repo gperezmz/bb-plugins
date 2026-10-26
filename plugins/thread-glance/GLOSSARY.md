@@ -129,7 +129,7 @@ A row of three lines: the project's icon and name with the status slot, the titl
 _Avoid_: Big row, expanded row
 
 **Folded card**:
-A row of one line: project name and title, the children chip, an unpin button and the live status. Used for every row of Working and for the threads Thread display folds; it unfolds when the thread fails or needs you, and under Compact working threads also when its work ends.
+A row of one line: project name (or only its icon under Project icon only) and title, the children chip, an unpin button and the live status. Used for every row of Working and for the threads Thread display folds; it unfolds when the thread fails or needs you, and under Compact working threads also when its work ends.
 _Avoid_: Compact row, collapsed card
 
 **Thread display**:
