@@ -72,16 +72,15 @@ Group by worktree is Thread Glance's, but bb's list carries out the request
 itself: its `environmentGrouping` gathers threads that share a worktree into
 one row. At `auto`, its default, it does so in project and machine view and
 not in chronological view; `true` does so in every view, `false` in none.
-While `groupByReadStatus` is `true`, bb's list ignores `environmentGrouping`
-and groups nothing by worktree: say so, and set nothing unless the user asks
-to turn By read status off. Otherwise the table below decides. Read the three
-values before acting:
+For this request, read these three values in place of `prefs list`:
 
 ```sh
-bb thread-list prefs get groupByReadStatus
 bb thread-list prefs get organizationMode
 bb thread-list prefs get environmentGrouping
+bb thread-list prefs get groupByReadStatus
 ```
+
+The first two decide the `set`:
 
 | `environmentGrouping` | `organizationMode` project or machine | `organizationMode` chronological |
 | --- | --- | --- |
@@ -89,7 +88,10 @@ bb thread-list prefs get environmentGrouping
 | `true` | already grouped: no `set` | already grouped: no `set` |
 | `false` | `set environmentGrouping auto` | `set environmentGrouping true` |
 
-The reply says what bb's list does now and names the one change made, or
-that none was needed, since the user cannot see from the reply alone whether
-the sidebar changed. Offer no switch for this request; one line may add that
-Thread Glance's Group by worktree also gathers them under their branch.
+The reply says what bb's list does now and names each change made, or that
+none was needed, since the user cannot see from the reply alone whether the
+sidebar changed. While `groupByReadStatus` is `true`, bb's list ignores
+`environmentGrouping` and shows nothing grouped by worktree, so the reply says
+the grouping shows only once By read status is off, and turns it off only if
+asked. Offer no switch for this request; one line may add that Thread
+Glance's Group by worktree also gathers them under their branch.
