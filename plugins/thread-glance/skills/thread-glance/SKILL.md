@@ -59,7 +59,9 @@ the user is told where to do it instead:
 Do not change a Thread Glance setting: the user would not see it, so
 `bb thread-glance prefs set` is not run. For a request bb's list can carry out (sort,
 organisation, collapse, hidden groups, row actions), run
-`bb thread-list prefs set`, reading `bb thread-list prefs list` first. For a
+`bb thread-list prefs set`, reading `bb thread-list prefs list` first. It
+does not name the values a key takes: the sort, `chronologicalSort`, takes
+`updated`, `created`, `alpha` (by title) or `none`. For a
 request only Thread Glance can carry out (shelves, snooze, project colours,
 Thread display, project icon only, automatic settling), tell the user Thread Glance is not the list in use. Offer
 to switch the sidebar to Thread Glance, and switch only if asked:
@@ -93,5 +95,6 @@ none was needed, since the user cannot see from the reply alone whether the
 sidebar changed. While `groupByReadStatus` is `true`, bb's list ignores
 `environmentGrouping` and shows nothing grouped by worktree, so the reply says
 the grouping shows only once By read status is off, and turns it off only if
-asked. Offer no switch for this request; one line may add that Thread
-Glance's Group by worktree also gathers them under their branch.
+asked. Since bb's list does what was asked, the reply offers no switch to
+Thread Glance: at most one line says that Thread Glance's Group by worktree
+also gathers them under their branch, without offering to switch.
