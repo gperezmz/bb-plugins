@@ -11,6 +11,10 @@ export const TONE_CLASS: Record<StatusTone, string> = {
   unread: "text-[color:var(--tg-unread)]",
   draft: "text-[color:var(--tg-draft)]",
   muted: "text-muted-foreground",
+  // The classes bb's own row draws a plugin's status in, so the two lists agree.
+  "bb-success": "text-success-foreground",
+  "bb-running": "text-success",
+  "bb-error": "text-destructive",
 };
 
 export function GlyphMark({ glyph, className }: { glyph: StatusGlyph; className?: string }) {

@@ -139,7 +139,7 @@ describe("a status another plugin set on a row", () => {
     const status = card("a").querySelector("[data-status=plugin]")!;
     expect(status.getAttribute("aria-label")).toBe("Sandbox ready, 5m");
     expect(within(card("a")).getByRole("img", { name: "Sandbox ready, 5m" })).toBe(status);
-    expect(status.className).toContain("text-[color:var(--tg-unread)]");
+    expect(status.className).toContain("text-success-foreground");
     act(() => m.host.update({ rowStatuses: new Map() }));
     await flush();
     expect(icon("a")).toBeNull();

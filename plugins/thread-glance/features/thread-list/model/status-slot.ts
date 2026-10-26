@@ -4,7 +4,8 @@
 // indicators that do not outrank it. Pure.
 import type { PluginSidebarThread, PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
 
-export type StatusTone = "failed" | "needs-you" | "working" | "unread" | "draft" | "muted";
+/** The `bb-` tones are the colours bb gives the tones of a status another plugin set, which are not Thread Glance's own. */
+export type StatusTone = "failed" | "needs-you" | "working" | "unread" | "draft" | "muted" | "bb-success" | "bb-running" | "bb-error";
 
 /** The glyph a status draws: a bb icon by name, or the unread dot. */
 export type StatusGlyph = { kind: "icon"; name: string; spin?: boolean; shine?: boolean } | { kind: "dot" };
@@ -147,9 +148,9 @@ function outranksRowStatus(indicator: PluginSidebarThread["indicator"]): boolean
 
 const ROW_STATUS_TONE: Record<NonNullable<PluginSidebarThreadRowStatus["tone"]>, StatusTone> = {
   default: "muted",
-  error: "failed",
-  running: "working",
-  success: "unread",
+  error: "bb-error",
+  running: "bb-running",
+  success: "bb-success",
 };
 
 /** A plugin's status as the slot draws it: bb's icon in bb's colour for its tone, the thread's age beside it. */
@@ -160,7 +161,7 @@ function pluginStatus(rowStatus: PluginSidebarThreadRowStatus, age: string): Sta
     label: age,
     ariaLabel: rowStatus.label,
     tone,
-    glyph: ICON(rowStatus.icon, tone === "working" ? { shine: true } : {}),
+    glyph: ICON(rowStatus.icon, tone === "bb-running" ? { shine: true } : {}),
     timed: false,
   };
 }

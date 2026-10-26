@@ -112,7 +112,7 @@ describe("a status another plugin set", () => {
         kind: "plugin",
         label: "3h",
         ariaLabel: "Sandbox ready",
-        tone: "unread",
+        tone: "bb-success",
         glyph: { kind: "icon", name: "Box" },
       });
     }
@@ -120,8 +120,8 @@ describe("a status another plugin set", () => {
 
   it("gives each tone bb's colour, and a shimmer to running", () => {
     expect(slot({ rowStatus: { icon: "Box", label: "x" } })).toMatchObject({ tone: "muted", glyph: { name: "Box" } });
-    expect(slot({ rowStatus: { icon: "Box", label: "x", tone: "error" } }).tone).toBe("failed");
-    expect(slot({ rowStatus: { icon: "Box", label: "x", tone: "running" } })).toMatchObject({ tone: "working", glyph: { shine: true } });
+    expect(slot({ rowStatus: { icon: "Box", label: "x", tone: "error" } }).tone).toBe("bb-error");
+    expect(slot({ rowStatus: { icon: "Box", label: "x", tone: "running" } })).toMatchObject({ tone: "bb-running", glyph: { shine: true } });
   });
 
   it("yields to a question, a failed or waiting queued message, work in flight and a failure", () => {
