@@ -8,7 +8,7 @@ import type { PluginSidebarThread, PluginSidebarThreadRowStatus } from "@get-bb/
 export type StatusTone = "failed" | "needs-you" | "working" | "unread" | "draft" | "muted" | "bb-success" | "bb-running" | "bb-error";
 
 /** The glyph a status draws: a bb icon by name, or the unread dot. */
-export type StatusGlyph = { kind: "icon"; name: string; spin?: boolean; shine?: boolean } | { kind: "dot" };
+export type StatusGlyph = { kind: "icon"; name: string; spin?: boolean; shine?: boolean; pulse?: boolean } | { kind: "dot" };
 
 export type StatusKind =
   "needs-you" | "send-failed" | "queued" | "failed" | "unread" | "working" | "monitoring" | "workflow" | "agent" | "command" | "planning" | "goal" | "draft" | "drafting" | "plugin" | "age";
@@ -89,7 +89,7 @@ export function isWorkingIndicator(indicator: PluginSidebarThread["indicator"]):
   }
 }
 
-const ICON = (name: string, extra: { spin?: boolean; shine?: boolean } = {}): StatusGlyph => ({ kind: "icon", name, ...extra });
+const ICON = (name: string, extra: { spin?: boolean; shine?: boolean; pulse?: boolean } = {}): StatusGlyph => ({ kind: "icon", name, ...extra });
 
 const NEEDS_YOU: Omit<StatusSlot, "ariaLabel"> = {
   kind: "needs-you",
@@ -161,7 +161,7 @@ function pluginStatus(rowStatus: PluginSidebarThreadRowStatus, age: string): Sta
     label: age,
     ariaLabel: rowStatus.label,
     tone,
-    glyph: ICON(rowStatus.icon, tone === "bb-running" ? { shine: true } : {}),
+    glyph: ICON(rowStatus.icon, tone === "bb-running" ? { shine: true, pulse: true } : {}),
     timed: false,
   };
 }

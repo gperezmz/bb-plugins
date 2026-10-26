@@ -118,10 +118,18 @@ describe("a status another plugin set", () => {
     }
   });
 
-  it("gives each tone bb's colour, and a shimmer to running", () => {
+  it("gives each tone bb's colour, and a shimmer and a pulse to running", () => {
     expect(slot({ rowStatus: { icon: "Box", label: "x" } })).toMatchObject({ tone: "muted", glyph: { name: "Box" } });
     expect(slot({ rowStatus: { icon: "Box", label: "x", tone: "error" } }).tone).toBe("bb-error");
-    expect(slot({ rowStatus: { icon: "Box", label: "x", tone: "running" } })).toMatchObject({ tone: "bb-running", glyph: { shine: true } });
+    expect(slot({ rowStatus: { icon: "Box", label: "x", tone: "running" } })).toMatchObject({ tone: "bb-running", glyph: { shine: true, pulse: true } });
+  });
+
+  it("pulses only a running status, and not Thread Glance's own glyphs", () => {
+    for (const tone of ["default", "success", "error"] as const) {
+      expect(slot({ rowStatus: { icon: "Box", label: "x", tone } }).glyph).not.toHaveProperty("pulse");
+    }
+    expect(slot({ indicator: "workflow" }).glyph).not.toHaveProperty("pulse");
+    expect(slot({ indicator: "runtime" }).glyph).not.toHaveProperty("pulse");
   });
 
   it("yields to a question, a failed or waiting queued message, work in flight and a failure", () => {
