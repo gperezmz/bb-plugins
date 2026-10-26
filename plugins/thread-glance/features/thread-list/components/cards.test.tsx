@@ -577,4 +577,124 @@ describe("Project icon only", () => {
       vi.useRealTimers();
     }
   });
+
+  describe("dismissing the tooltip", () => {
+    const onIcon = { clientX: 15, clientY: 15 };
+    const off = { clientX: 100, clientY: 15 };
+
+    // Mounts with the tooltip open on the icon, then runs `body` under fake timers.
+    async function withTooltipOpen(settings: Record<string, unknown>, body: () => Promise<void>) {
+      await mount({ threads: [rows[0]!], server: { settings: { threadDisplay: "compact-working", projectIconOnly: true, ...settings } } });
+      vi.useFakeTimers();
+      try {
+        const icon = card("w").querySelector<HTMLElement>("[data-monogram]")!.parentElement!;
+        vi.spyOn(icon, "getBoundingClientRect").mockReturnValue({ left: 10, right: 22, top: 10, bottom: 22, width: 12, height: 12, x: 10, y: 10, toJSON: () => ({}) });
+        fireEvent.pointerMove(card("w"), onIcon);
+        await act(async () => vi.advanceTimersByTime(1000));
+        expect(screen.getByRole("tooltip").textContent).toBe("Alpha");
+        await body();
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+
+    async function stayClosedWhileResting() {
+      fireEvent.pointerMove(card("w"), onIcon);
+      await act(async () => vi.advanceTimersByTime(5000));
+      expect(screen.queryByRole("tooltip")).toBeNull();
+    }
+
+    async function reopenAfterLeavingAndResting() {
+      fireEvent.pointerMove(card("w"), off);
+      fireEvent.pointerMove(card("w"), onIcon);
+      await act(async () => vi.advanceTimersByTime(399));
+      expect(screen.queryByRole("tooltip")).toBeNull();
+      await act(async () => vi.advanceTimersByTime(1));
+      expect(screen.getByRole("tooltip").textContent).toBe("Alpha");
+    }
+
+    it("closes on a click without stopping it, and stays closed until the pointer has left the icon and rested again", async () => {
+      await withTooltipOpen({}, async () => {
+        // fireEvent returns false when a listener cancelled the event.
+        expect(fireEvent.pointerDown(card("w"), onIcon)).toBe(true);
+        await act(async () => vi.advanceTimersByTime(0));
+        expect(screen.queryByRole("tooltip")).toBeNull();
+        await stayClosedWhileResting();
+        await reopenAfterLeavingAndResting();
+      });
+    });
+
+    it("closes on a right-click and on a context menu opened from the keyboard without stopping them", async () => {
+      const seen = vi.fn();
+      document.addEventListener("contextmenu", seen);
+      await withTooltipOpen({}, async () => {
+        expect(fireEvent.pointerDown(card("w"), { ...onIcon, button: 2 })).toBe(true);
+        fireEvent.contextMenu(card("w"), onIcon);
+        expect(seen).toHaveBeenCalledTimes(1);
+        await act(async () => vi.advanceTimersByTime(0));
+        expect(screen.queryByRole("tooltip")).toBeNull();
+        await stayClosedWhileResting();
+        await reopenAfterLeavingAndResting();
+        fireEvent.contextMenu(card("w").querySelector("a")!);
+        expect(seen).toHaveBeenCalledTimes(2);
+        await act(async () => vi.advanceTimersByTime(0));
+        expect(screen.queryByRole("tooltip")).toBeNull();
+      }).finally(() => document.removeEventListener("contextmenu", seen));
+    });
+
+    it("closes on Escape, which still reaches the document's other handlers", async () => {
+      const seen = vi.fn();
+      document.addEventListener("keydown", seen);
+      try {
+        await withTooltipOpen({}, async () => {
+          fireEvent.keyDown(document.body, { key: "Escape" });
+          await act(async () => vi.advanceTimersByTime(0));
+          expect(seen).toHaveBeenCalledTimes(1);
+          expect(screen.queryByRole("tooltip")).toBeNull();
+          await stayClosedWhileResting();
+          await reopenAfterLeavingAndResting();
+        });
+      } finally {
+        document.removeEventListener("keydown", seen);
+      }
+    });
+
+    it("closes on Escape that a handler below the document stops", async () => {
+      await withTooltipOpen({}, async () => {
+        const stop = (event: Event) => event.stopPropagation();
+        document.body.addEventListener("keydown", stop);
+        try {
+          fireEvent.keyDown(document.body, { key: "Escape" });
+        } finally {
+          document.body.removeEventListener("keydown", stop);
+        }
+        await act(async () => vi.advanceTimersByTime(0));
+        expect(screen.queryByRole("tooltip")).toBeNull();
+      });
+    });
+
+    it("closes a tooltip that has not opened yet, and leaves it closed", async () => {
+      await mount({ threads: [rows[0]!], server: { settings: { threadDisplay: "compact-working", projectIconOnly: true } } });
+      vi.useFakeTimers();
+      try {
+        const icon = card("w").querySelector<HTMLElement>("[data-monogram]")!.parentElement!;
+        vi.spyOn(icon, "getBoundingClientRect").mockReturnValue({ left: 10, right: 22, top: 10, bottom: 22, width: 12, height: 12, x: 10, y: 10, toJSON: () => ({}) });
+        fireEvent.pointerMove(card("w"), onIcon);
+        await act(async () => vi.advanceTimersByTime(200));
+        fireEvent.keyDown(document.body, { key: "Escape" });
+        await stayClosedWhileResting();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("ignores a click while the pointer is not on the icon", async () => {
+      await withTooltipOpen({}, async () => {
+        fireEvent.pointerMove(card("w"), off);
+        await act(async () => vi.advanceTimersByTime(0));
+        fireEvent.pointerDown(card("w"), off);
+        await reopenAfterLeavingAndResting();
+      });
+    });
+  });
 });
