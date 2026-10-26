@@ -59,6 +59,12 @@ export function SidebarLayout({ form }: { form: Form }) {
         </>
       ) : null}
       <SwitchRow
+        label="Project icon only"
+        description="Show only the project's icon on folded cards. Its name shows on hover and in the hover card."
+        checked={values.projectIconOnly === true}
+        onChange={(on) => edit("projectIconOnly", on)}
+      />
+      <SwitchRow
         label="Working shelf"
         experimental
         description="Move threads whose tree is working to their own shelf."

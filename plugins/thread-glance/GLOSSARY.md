@@ -142,6 +142,10 @@ Under Compact all threads, pinned threads draw as full cards. It shows only unde
 **Keep woke as full cards**:
 Under Compact all threads, a woke thread draws as a full card until you open it. It shows only under Compact all threads.
 
+**Project icon only**:
+The setting that draws a folded card with its project's icon and no name; the name shows while the pointer rests on the icon and in the hover card. It applies to every folded card, whatever Thread display folded it.
+_Avoid_: Icon-only mode, hide project name
+
 **Slim row**:
 A one-line row, 32 px tall, showing project name, title, the children chip and the shelf's label, with a button to restore the thread on hover. Used on Parked, Snoozed and Settled.
 _Avoid_: Thin row, mini row

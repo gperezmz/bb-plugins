@@ -135,7 +135,7 @@ Heights are kept in one place, [`model/heights.ts`](../../plugins/thread-glance/
 
 ### Folded card
 
-One line: project name · title, then the children chip, the [port indicator](#workspace-ports), an unpin button and the live status with elapsed time or the age. The branch, pull request and harness are in the [hover card](#hover-card).
+One line: project name · title, then the children chip, the [port indicator](#workspace-ports), an unpin button and the live status with elapsed time or the age. The branch, pull request and harness are in the [hover card](#hover-card). With **Project icon only** on, the line starts with the project's icon alone: the name shows while the pointer rests on the icon, and the hover card names the project.
 
 | Thread display | Folds | Unfolds to a full card |
 |---|---|---|
