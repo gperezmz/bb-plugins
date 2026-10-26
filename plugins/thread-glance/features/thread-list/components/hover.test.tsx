@@ -55,6 +55,23 @@ async function focusWithKeyboard(element: HTMLElement) {
 }
 
 describe("AC19: the Hover card", () => {
+  it("names the status another plugin set on the row", async () => {
+    const m = await mount({ threads: [makeThread({ id: "a", ...fresh })], slot: { sdk: models({ model: "claude-x", reasoningLevel: "high" }) } });
+    act(() => m.host.update({ rowStatuses: new Map([["a", { icon: "Box", label: "Sandbox ready", tone: "success" }]]) }));
+    await flush();
+    await focusWithKeyboard(anchor("a"));
+    expect(document.querySelector("[data-hover-card]")!.textContent).toContain("Sandbox ready");
+  });
+
+  it("pulses the glyph of a running status another plugin set on the row", async () => {
+    const m = await mount({ threads: [makeThread({ id: "a", ...fresh })], slot: { sdk: models({ model: "claude-x", reasoningLevel: "high" }) } });
+    act(() => m.host.update({ rowStatuses: new Map([["a", { icon: "Box", label: "busy", tone: "running" }]]) }));
+    await flush();
+    await focusWithKeyboard(anchor("a"));
+    const pulse = document.querySelector("[data-hover-card] .motion-safe\\:animate-pulse");
+    expect(pulse?.querySelector("[data-icon=Box]")?.className).toContain("animate-shine-icon");
+  });
+
   it("opens on keyboard focus at once, to the right, 256 px wide, with the title, project, machine and branch", async () => {
     await mount({
       threads: [makeThread({ id: "a", title: "Fix the thing", ...fresh, environment: { branchName: "feat/x" } })],

@@ -9,6 +9,7 @@ import {
   useSdk,
   useSidebarSplitLayout,
   useSidebarThreadDraftIds,
+  useSidebarThreadRowStatuses,
 } from "@get-bb/plugin-sdk/app";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import type { RpcContract } from "@/shared/contract";
@@ -40,8 +41,9 @@ function ThreadListEdge({ activeThreadId, isCompactViewport, onNavigate, onRetry
   const sdk = useSdk();
   const rpc = useRpc<RpcContract>();
   const draftIds = useSidebarThreadDraftIds();
+  const rowStatuses = useSidebarThreadRowStatuses();
   const splitLayout = useSidebarSplitLayout();
-  const host = { status: sidebar.status, threads: sidebar.threads, projects: sidebar.projects, draftIds, splitLayout };
+  const host = { status: sidebar.status, threads: sidebar.threads, projects: sidebar.projects, draftIds, rowStatuses, splitLayout };
   // The first data is fed before the first draw, so it is drawn at once.
   useState(() => {
     store.feedFocus(activeThreadId, isCompactViewport);

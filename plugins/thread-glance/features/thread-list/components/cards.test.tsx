@@ -125,6 +125,122 @@ describe("AC17: the Status slot", () => {
   });
 });
 
+describe("a status another plugin set on a row", () => {
+  const sandbox = { icon: "Box", label: "Sandbox ready", tone: "success" } as const;
+  const icon = (id: string) => card(id).querySelector("[data-status-slot] [data-status] [data-icon]")?.getAttribute("data-icon") ?? null;
+
+  it("shows on a Full card as bb's icon in its colour with the age beside it, and follows the host's updates", async () => {
+    const m = await mount({ threads: [makeThread({ id: "a", ...fresh })] });
+    act(() => m.host.update({ rowStatuses: new Map([["a", sandbox]]) }));
+    await flush();
+    expect(card("a").getAttribute("data-card")).toBe("full");
+    expect(slot("a")).toBe("5m");
+    expect(icon("a")).toBe("Box");
+    const status = card("a").querySelector("[data-status=plugin]")!;
+    expect(status.getAttribute("aria-label")).toBe("Sandbox ready, 5m");
+    expect(within(card("a")).getByRole("img", { name: "Sandbox ready, 5m" })).toBe(status);
+    expect(status.className).toContain("text-success-foreground");
+    act(() => m.host.update({ rowStatuses: new Map() }));
+    await flush();
+    expect(icon("a")).toBeNull();
+  });
+
+  it("draws each tone in the class bb's own list uses", async () => {
+    const m = await mount({
+      threads: [makeThread({ id: "d", ...fresh }), makeThread({ id: "e", ...fresh }), makeThread({ id: "r", ...fresh })],
+    });
+    act(() =>
+      m.host.update({
+        rowStatuses: new Map([
+          ["d", { icon: "Box", label: "plain" }],
+          ["e", { icon: "Box", label: "broken", tone: "error" }],
+          ["r", { icon: "Box", label: "busy", tone: "running" }],
+        ]),
+      }),
+    );
+    await flush();
+    const colour = (id: string) => card(id).querySelector("[data-status=plugin]")!.className;
+    expect(colour("d")).toContain("text-muted-foreground");
+    expect(colour("e")).toContain("text-destructive");
+    expect(colour("r")).toContain("text-success");
+    expect(colour("r")).not.toContain("text-success-foreground");
+  });
+
+  const pulse = (id: string) => card(id).querySelector("[data-status-slot] [data-status=plugin] .motion-safe\\:animate-pulse");
+  const busy = { icon: "Box", label: "busy", tone: "running" } as const;
+
+  it("pulses a running status on a Full card, inside a wrapper that leaves the shine on the icon, and no other tone", async () => {
+    const m = await mount({ threads: [makeThread({ id: "r", ...fresh }), makeThread({ id: "s", ...fresh })] });
+    act(() => m.host.update({ rowStatuses: new Map<string, { icon: string; label: string; tone: "running" | "success" }>([["r", busy], ["s", sandbox]]) }));
+    await flush();
+    expect(pulse("r")?.querySelector("[data-icon=Box]")?.className).toContain("animate-shine-icon");
+    expect(pulse("r")?.className).not.toContain("animate-shine-icon");
+    expect(pulse("s")).toBeNull();
+  });
+
+  it("pulses a running status on a Folded card", async () => {
+    const m = await mount({ threads: [makeThread({ id: "r", ...fresh })], server: { settings: { threadDisplay: "compact-all" } } });
+    act(() => m.host.update({ rowStatuses: new Map([["r", busy]]) }));
+    await flush();
+    expect(card("r").getAttribute("data-card")).toBe("folded");
+    expect(pulse("r")?.querySelector("[data-icon=Box]")?.className).toContain("animate-shine-icon");
+  });
+
+  // keeps: bb's CSS drops the shine's mask (`[aria-hidden="true"] .animate-shine-icon { mask-image: none }`),
+  // so a shining icon under an aria-hidden ancestor draws no shine in a running bb while jsdom still sees the
+  // class; nothing else run on every change catches that, and the shine is what a running status promises.
+  it("keeps a running status's shining icon out from under an aria-hidden ancestor, where bb's CSS turns the shine off", async () => {
+    const m = await mount({ threads: [makeThread({ id: "r", ...fresh })] });
+    act(() => m.host.update({ rowStatuses: new Map([["r", busy]]) }));
+    await flush();
+    const icon = card("r").querySelector("[data-status-slot] [data-status=plugin] .animate-shine-icon");
+    expect(icon).not.toBeNull();
+    expect(icon!.parentElement!.closest('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it("shows on a Folded card as the icon and the age, named for assistive technology", async () => {
+    const m = await mount({ threads: [makeThread({ id: "a", ...fresh })], server: { settings: { threadDisplay: "compact-all" } } });
+    act(() => m.host.update({ rowStatuses: new Map([["a", sandbox]]) }));
+    await flush();
+    expect(card("a").getAttribute("data-card")).toBe("folded");
+    expect(icon("a")).toBe("Box");
+    expect(card("a").querySelector("[data-status-slot] [data-status=plugin]")?.textContent).toBe("5mSandbox ready, 5m");
+    expect(card("a").querySelector("[data-status-slot] [data-status=plugin] [aria-hidden]:not([data-icon])")?.textContent).toBe("5m");
+  });
+
+  it("gives way to Needs you, Send failed, Queued, working and failed", async () => {
+    const m = await mount({
+      threads: [
+        makeThread({ id: "ask", ...fresh, hasPendingInteraction: true, indicator: "waiting-for-input" }),
+        makeThread({ id: "failedq", ...fresh, queuedWork: "failed" }),
+        makeThread({ id: "queued", ...fresh, queuedWork: "waiting" }),
+        makeThread({ id: "working", ...fresh, ...working, indicator: "runtime" }),
+        makeThread({ id: "failed", ...fresh, indicator: "unread-error" }),
+      ],
+    });
+    const ids = ["ask", "failedq", "queued", "working", "failed"];
+    act(() => m.host.update({ rowStatuses: new Map(ids.map((id) => [id, sandbox])) }));
+    await flush();
+    expect(ids.map(slot)).toEqual(["Needs you", "Send failed", "Queued", "Working", "Failed"]);
+    expect(ids.map(icon)).not.toContain("Box");
+  });
+
+  it("leaves a Slim row with its shelf's label and status", async () => {
+    const old = { createdAt: NOW - 5 * DAY, updatedAt: NOW - 4 * DAY, latestAttentionAt: NOW - 4 * DAY };
+    const m = await mount({
+      threads: [makeThread({ id: "parked", ...old }), makeThread({ id: "settled", ...old, indicator: "unread-success" })],
+      server: { rows: { parked: parkedRow(NOW - 2 * DAY), settled: settledRow(NOW - DAY, "manual") }, settings: { inactiveShelf: false } },
+    });
+    for (const label of ["Parked (1)", "Settled (1)"]) fireEvent.click(screen.getByRole("button", { name: label }));
+    act(() => m.host.update({ rowStatuses: new Map(["parked", "settled"].map((id) => [id, sandbox])) }));
+    await flush();
+    for (const id of ["parked", "settled"]) expect(card(id).getAttribute("data-card")).toBe("slim");
+    expect(card("parked").textContent).toContain("Waiting 2d");
+    expect(card("settled").textContent).toContain("Unread");
+    expect(document.querySelector("[data-status=plugin]")).toBeNull();
+  });
+});
+
 describe("AC17: the Folded card", () => {
   it("folds a working thread to one line with Compact working threads on, and unfolds when the turn ends", async () => {
     const m = await mount({
@@ -435,5 +551,183 @@ describe("project icons", () => {
   it("draws the monogram while the icon has not loaded", async () => {
     await mount({ threads: [makeThread({ id: "a", ...fresh })] });
     expect(card("a").querySelector("[data-monogram]")?.textContent).toBe("A");
+  });
+});
+
+describe("Project icon only", () => {
+  const rows = [
+    makeThread({ id: "w", ...fresh, ...working, indicator: "runtime" }),
+    makeThread({ id: "i", ...fresh }),
+  ];
+
+  it("draws every folded card with the project's icon and no name, working ones included", async () => {
+    await mount({ threads: rows, server: { settings: { threadDisplay: "compact-all", workingShelf: true, projectIconOnly: true } } });
+    for (const id of ["w", "i"]) {
+      expect(card(id).getAttribute("data-card")).toBe("folded");
+      expect(card(id).querySelector("[data-project-name]")).toBeNull();
+      expect(card(id).querySelector("[data-monogram]")?.textContent).toBe("A");
+      expect(card(id).querySelector("[data-title]")).not.toBeNull();
+    }
+  });
+
+  it("leaves folded cards as they are with the setting off", async () => {
+    await mount({ threads: rows, server: { settings: { threadDisplay: "compact-working" } } });
+    expect(card("w").querySelector("[data-project-name]")?.textContent).toBe("Alpha");
+  });
+
+  it("keeps the name on a full card", async () => {
+    await mount({ threads: rows, server: { settings: { threadDisplay: "compact-working", projectIconOnly: true } } });
+    expect(card("w").querySelector("[data-project-name]")).toBeNull();
+    expect(card("i").getAttribute("data-card")).toBe("full");
+    expect(card("i").querySelector("[data-project-name]")?.textContent).toBe("Alpha");
+  });
+
+  it("still names the project in the hover card", async () => {
+    await mount({ threads: [rows[0]!], server: { settings: { threadDisplay: "compact-working", projectIconOnly: true } } });
+    fireEvent.keyDown(document.body, { key: "Tab" });
+    await act(async () => document.querySelector<HTMLElement>('a[data-sidebar-thread-id="w"]')!.focus());
+    await flush();
+    expect(document.querySelector("[data-hover-card]")?.textContent).toContain("Alpha");
+  });
+
+  it("names the project once the pointer rests on the icon, and not when it rests elsewhere on the card", async () => {
+    await mount({ threads: [rows[0]!], server: { settings: { threadDisplay: "compact-working", projectIconOnly: true } } });
+    vi.useFakeTimers();
+    try {
+      const icon = card("w").querySelector<HTMLElement>("[data-monogram]")!.parentElement!;
+      vi.spyOn(icon, "getBoundingClientRect").mockReturnValue({ left: 10, right: 22, top: 10, bottom: 22, width: 12, height: 12, x: 10, y: 10, toJSON: () => ({}) });
+      fireEvent.pointerMove(card("w"), { clientX: 100, clientY: 15 });
+      await act(async () => vi.advanceTimersByTime(1000));
+      expect(screen.queryByRole("tooltip")).toBeNull();
+      fireEvent.pointerMove(card("w"), { clientX: 15, clientY: 15 });
+      await act(async () => vi.advanceTimersByTime(1000));
+      expect(screen.getByRole("tooltip").textContent).toBe("Alpha");
+      fireEvent.pointerMove(card("w"), { clientX: 100, clientY: 15 });
+      await act(async () => vi.advanceTimersByTime(10));
+      expect(screen.queryByRole("tooltip")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  describe("dismissing the tooltip", () => {
+    const onIcon = { clientX: 15, clientY: 15 };
+    const off = { clientX: 100, clientY: 15 };
+
+    // Mounts with the tooltip open on the icon, then runs `body` under fake timers.
+    async function withTooltipOpen(settings: Record<string, unknown>, body: () => Promise<void>) {
+      await mount({ threads: [rows[0]!], server: { settings: { threadDisplay: "compact-working", projectIconOnly: true, ...settings } } });
+      vi.useFakeTimers();
+      try {
+        const icon = card("w").querySelector<HTMLElement>("[data-monogram]")!.parentElement!;
+        vi.spyOn(icon, "getBoundingClientRect").mockReturnValue({ left: 10, right: 22, top: 10, bottom: 22, width: 12, height: 12, x: 10, y: 10, toJSON: () => ({}) });
+        fireEvent.pointerMove(card("w"), onIcon);
+        await act(async () => vi.advanceTimersByTime(1000));
+        expect(screen.getByRole("tooltip").textContent).toBe("Alpha");
+        await body();
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+
+    async function stayClosedWhileResting() {
+      fireEvent.pointerMove(card("w"), onIcon);
+      await act(async () => vi.advanceTimersByTime(5000));
+      expect(screen.queryByRole("tooltip")).toBeNull();
+    }
+
+    async function reopenAfterLeavingAndResting() {
+      fireEvent.pointerMove(card("w"), off);
+      fireEvent.pointerMove(card("w"), onIcon);
+      await act(async () => vi.advanceTimersByTime(399));
+      expect(screen.queryByRole("tooltip")).toBeNull();
+      await act(async () => vi.advanceTimersByTime(1));
+      expect(screen.getByRole("tooltip").textContent).toBe("Alpha");
+    }
+
+    it("closes on a click without stopping it, and stays closed until the pointer has left the icon and rested again", async () => {
+      await withTooltipOpen({}, async () => {
+        // fireEvent returns false when a listener cancelled the event.
+        expect(fireEvent.pointerDown(card("w"), onIcon)).toBe(true);
+        await act(async () => vi.advanceTimersByTime(0));
+        expect(screen.queryByRole("tooltip")).toBeNull();
+        await stayClosedWhileResting();
+        await reopenAfterLeavingAndResting();
+      });
+    });
+
+    it("closes on a right-click and on a context menu opened from the keyboard without stopping them", async () => {
+      const seen = vi.fn();
+      document.addEventListener("contextmenu", seen);
+      await withTooltipOpen({}, async () => {
+        expect(fireEvent.pointerDown(card("w"), { ...onIcon, button: 2 })).toBe(true);
+        fireEvent.contextMenu(card("w"), onIcon);
+        expect(seen).toHaveBeenCalledTimes(1);
+        await act(async () => vi.advanceTimersByTime(0));
+        expect(screen.queryByRole("tooltip")).toBeNull();
+        await stayClosedWhileResting();
+        await reopenAfterLeavingAndResting();
+        // A menu opened from the keyboard lands on the focused element, which need not be this card.
+        fireEvent.contextMenu(document.body);
+        expect(seen).toHaveBeenCalledTimes(2);
+        await act(async () => vi.advanceTimersByTime(0));
+        expect(screen.queryByRole("tooltip")).toBeNull();
+      }).finally(() => document.removeEventListener("contextmenu", seen));
+    });
+
+    it("closes on Escape, which still reaches the document's other handlers", async () => {
+      const seen = vi.fn();
+      document.addEventListener("keydown", seen);
+      try {
+        await withTooltipOpen({}, async () => {
+          fireEvent.keyDown(document.body, { key: "Escape" });
+          await act(async () => vi.advanceTimersByTime(0));
+          expect(seen).toHaveBeenCalledTimes(1);
+          expect(screen.queryByRole("tooltip")).toBeNull();
+          await stayClosedWhileResting();
+          await reopenAfterLeavingAndResting();
+        });
+      } finally {
+        document.removeEventListener("keydown", seen);
+      }
+    });
+
+    it("closes on Escape that a handler below the document stops", async () => {
+      await withTooltipOpen({}, async () => {
+        const stop = (event: Event) => event.stopPropagation();
+        document.body.addEventListener("keydown", stop);
+        try {
+          fireEvent.keyDown(document.body, { key: "Escape" });
+        } finally {
+          document.body.removeEventListener("keydown", stop);
+        }
+        await act(async () => vi.advanceTimersByTime(0));
+        expect(screen.queryByRole("tooltip")).toBeNull();
+      });
+    });
+
+    it("closes a tooltip that has not opened yet, and leaves it closed", async () => {
+      await mount({ threads: [rows[0]!], server: { settings: { threadDisplay: "compact-working", projectIconOnly: true } } });
+      vi.useFakeTimers();
+      try {
+        const icon = card("w").querySelector<HTMLElement>("[data-monogram]")!.parentElement!;
+        vi.spyOn(icon, "getBoundingClientRect").mockReturnValue({ left: 10, right: 22, top: 10, bottom: 22, width: 12, height: 12, x: 10, y: 10, toJSON: () => ({}) });
+        fireEvent.pointerMove(card("w"), onIcon);
+        await act(async () => vi.advanceTimersByTime(200));
+        fireEvent.keyDown(document.body, { key: "Escape" });
+        await stayClosedWhileResting();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("ignores a click while the pointer is not on the icon", async () => {
+      await withTooltipOpen({}, async () => {
+        fireEvent.pointerMove(card("w"), off);
+        await act(async () => vi.advanceTimersByTime(0));
+        fireEvent.pointerDown(card("w"), off);
+        await reopenAfterLeavingAndResting();
+      });
+    });
   });
 });

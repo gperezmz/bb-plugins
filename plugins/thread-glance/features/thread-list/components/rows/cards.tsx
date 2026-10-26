@@ -2,7 +2,7 @@
 // lines, the Folded card's one, and the Slim row's one with the shelf's label
 // and restore button. The frame (stripe, link, sweep, menus) is `ThreadRow`.
 import { experimental_Icon as Icon, ThreadTitle } from "@get-bb/plugin-sdk/app";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { isWaitingSettle } from "@/shared/lifecycle";
 import type { RowView } from "../../model/list-model";
@@ -11,7 +11,7 @@ import type { ProjectColour } from "../../model/project-colour";
 import { restoreAction, shelfLabel } from "../../model/shelf-label";
 import type { StatusSlot } from "../../model/status-slot";
 import { ProjectMark, ProjectName } from "../../project/ProjectMark";
-import { useCommands, useNow } from "../../store/hooks";
+import { useCommands, useNow, useSettings } from "../../store/hooks";
 import { ChildrenChip } from "./ChildrenChip";
 import { HarnessLogo } from "./HarnessLogo";
 import { HoverActions, hoverActionsOf } from "./HoverActions";
@@ -23,6 +23,7 @@ import { MoreButton } from "./RowMenu";
 import { RenameEditor } from "./RenameEditor";
 import { CompactStatusView, StatusView } from "./StatusView";
 import { Tip } from "./Tip";
+import { useRestingOn } from "./use-icon-hover";
 import { useRowStatus } from "./use-row-status";
 
 interface CardProps {
@@ -270,15 +271,27 @@ function FullCard({ row, editing, projectName, colour }: CardProps) {
 
 function FoldedCard({ row, editing, projectName, colour }: CardProps) {
   const status = useRowStatus(row);
+  const { projectIconOnly } = useSettings();
   const { thread } = row;
+  const icon = useRef<HTMLSpanElement>(null);
+  const named = useRestingOn(icon, projectIconOnly);
   return (
     <div className="pointer-events-none relative flex h-full items-center gap-1.5 text-xs">
-      <ProjectMark projectId={thread.projectId} name={projectName} colour={colour} className="size-3" />
-      {/* Squeezed first, then the chip's marks, so the title keeps `min-w-12` of the one line. */}
-      <ProjectName name={projectName} colour={colour} className="max-w-[40%] shrink-[4] truncate" />
-      <span aria-hidden className="shrink-0 text-muted-foreground/60">
-        ·
-      </span>
+      {/* The icon takes no pointer, so the row link keeps its clicks and hover card; with the name dropped, a tooltip names the project while the pointer rests on it. */}
+      <Tip label={projectIconOnly ? projectName : null} side="right" open={named}>
+        <span ref={icon} className="flex shrink-0">
+          <ProjectMark projectId={thread.projectId} name={projectName} colour={colour} className="size-3" />
+        </span>
+      </Tip>
+      {projectIconOnly ? null : (
+        <>
+          {/* Squeezed first, then the chip's marks, so the title keeps `min-w-12` of the one line. */}
+          <ProjectName name={projectName} colour={colour} className="max-w-[40%] shrink-[4] truncate" />
+          <span aria-hidden className="shrink-0 text-muted-foreground/60">
+            ·
+          </span>
+        </>
+      )}
       <Title row={row} editing={editing} className="min-w-12 text-xs" />
       {row.children === null ? null : <ChildrenChip parentId={row.id} info={row.children} expanded={row.expanded} />}
       <PortIndicator environmentId={thread.environment?.id} />

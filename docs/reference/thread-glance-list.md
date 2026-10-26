@@ -135,7 +135,7 @@ Heights are kept in one place, [`model/heights.ts`](../../plugins/thread-glance/
 
 ### Folded card
 
-One line: project name · title, then the children chip, the [port indicator](#workspace-ports), an unpin button and the live status with elapsed time or the age. The branch, pull request and harness are in the [hover card](#hover-card).
+One line: project name · title, then the children chip, the [port indicator](#workspace-ports), an unpin button and the live status with elapsed time, a status another plugin set (its icon and the age), or the age. The branch, pull request and harness are in the [hover card](#hover-card). With **Project icon only** on, the line starts with the project's icon alone: the name shows while the pointer rests on the icon, until a click, a right-click or Escape closes it, and the hover card names the project. A closed name stays closed until the pointer has left the icon and rested on it again.
 
 | Thread display | Folds | Unfolds to a full card |
 |---|---|---|
@@ -185,8 +185,10 @@ The 80 px, right-aligned slot shows one thing, the first that applies:
 
 1. "Needs you" while a question or approval is pending.
 2. "Send failed" or "Queued" for the queued message.
-3. The indicator's label: Failed, Needs you, Unread, Working or Monitoring, Workflow, Agent, Command, Planning, Goal, Draft or Drafting.
-4. Otherwise the age: "now", "Nm", "Nh", "Nd" up to 7 days, then "Nw", refreshed every minute.
+3. Needs you from the indicator, Failed, or work in flight: Working, Monitoring, Workflow, Agent, Command, Planning, Goal or Drafting.
+4. On a full or folded card, a status another plugin set on the thread's row: bb's icon in the colour of its tone, then the thread's age. A `running` tone also pulses and shines the icon, as bb's own list does, and stops both when the system asks for reduced motion; the hover card's glyph does the same. Its label is in the [hover card](#hover-card) and in the slot's accessible name, but is not drawn in the slot. A slim row and a child row do not show it.
+5. The rest of the indicator's labels: Unread or Draft.
+6. Otherwise the age: "now", "Nm", "Nh", "Nd" up to 7 days, then "Nw", refreshed every minute.
 
 Working-type labels add " · 5m" from when the thread was first seen working. That stamp survives reloads, and a fresh one starts after a pause.
 
@@ -198,6 +200,7 @@ Working-type labels add " · 5m" from when the thread was first seen working. Th
 | Workflow, Agent, Command, Monitoring, Planning, Goal | A shining icon | Sky |
 | Draft, Drafting | Pencil | Amber |
 | Unread | Dot | Emerald |
+| A plugin's status | The icon the plugin chose | bb's own, by tone: grey for default, destructive red for error, green, pulsing and shining for running, olive for success |
 
 Colours follow bb's theme, light or dark, not the operating system's.
 
@@ -221,7 +224,7 @@ Child rows have their own marks, titles and status or age, and a disclosure for 
 Opens 250 ms after the pointer rests on a row, never on touch, and closes 300 ms after the pointer leaves. Keyboard focus opens it at once. One card is open at a time, on the right of the row, 256 px wide. It shows:
 
 - the title, project, machine and branch;
-- the harness with its status glyph, then the model and reasoning level on one line as bb names them, such as "GPT 6.1 Sol Medium", loaded from bb. A model bb has no display name for shows its id; a level takes the label bb's model list gives it, else the level capitalised; no level leaves the name alone; "Loading…", "Not set" or "Unavailable" stand in for what is missing;
+- the harness with its status glyph, and beside it the label of a status another plugin set on the row, then the model and reasoning level on one line as bb names them, such as "GPT 6.1 Sol Medium", loaded from bb. A model bb has no display name for shows its id; a level takes the label bb's model list gives it, else the level capitalised; no level leaves the name alone; "Loading…", "Not set" or "Unavailable" stand in for what is missing;
 - the branch's pull request from GitHub PR Status, when it has one: `#number` and title, linking to it, with its attention state as its label and its checks, review and mergeability on one line. No pull request, no section;
 - "Subthreads (N)", with a toggle listing the direct children, each opening that child;
 - "Workspace ports (N)", when the thread's environment has listeners ([Workspace ports](#workspace-ports)).

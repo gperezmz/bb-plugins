@@ -44,6 +44,8 @@ const fields = {
   keepPinnedAsFullCards: flag,
   /** Under Compact all threads, a woke thread stays a Full card until it is opened. */
   keepWokeAsFullCards: flag,
+  /** A Folded card shows its project's icon alone, the name on hover and in the Hover card. */
+  projectIconOnly: flag,
   /** The Working shelf. */
   workingShelf: flag,
   /** The Inactive shelf. */
@@ -90,6 +92,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   threadDisplay: "full-cards",
   keepPinnedAsFullCards: false,
   keepWokeAsFullCards: false,
+  projectIconOnly: false,
   workingShelf: false,
   inactiveShelf: true,
   hoursBeforeInactive: 6,
@@ -112,6 +115,7 @@ export const SETTING_DESCRIPTIONS: Record<SettingKey, string> = {
   threadDisplay: `Which Pinned, Active and Inactive threads draw as a one-line folded card: ${THREAD_DISPLAYS.join(", ")}. "full-cards" folds none, "compact-working" the working ones, "compact-all" all of them; a thread that fails or needs you unfolds to a full card, under "compact-all" until you open it or the question clears, and after a send failure until the message sends or is deleted.`,
   keepPinnedAsFullCards: 'Under threadDisplay "compact-all", draw pinned threads as full cards. true or false.',
   keepWokeAsFullCards: 'Under threadDisplay "compact-all", draw a woke thread as a full card until it is opened. true or false.',
+  projectIconOnly: "Draw only the project's icon on folded cards, without its name; the name shows on hover and in the hover card. true or false.",
   workingShelf: "Move threads whose tree is working to their own Working shelf. true or false.",
   inactiveShelf: "Move threads with no activity for a while to the Inactive shelf. true or false.",
   hoursBeforeInactive: `Hours without activity before a thread moves to the Inactive shelf. A whole number, ${HOURS_BEFORE_INACTIVE_RANGE.min} to ${HOURS_BEFORE_INACTIVE_RANGE.max}.`,

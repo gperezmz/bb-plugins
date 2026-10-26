@@ -16,6 +16,7 @@ describe("settings defaults", () => {
       threadDisplay: "full-cards",
       keepPinnedAsFullCards: false,
       keepWokeAsFullCards: false,
+      projectIconOnly: false,
       workingShelf: false,
       inactiveShelf: true,
       hoursBeforeInactive: 6,

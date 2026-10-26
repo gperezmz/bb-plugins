@@ -1,6 +1,6 @@
 ---
 name: thread-glance
-description: Sets the Thread Glance sidebar via `bb thread-glance prefs`, covering shelves, snooze, park, settle, manual order, project colours, compacting working threads, the order of child threads, and how the sidebar groups, sorts, hides, collapses, folds and settles threads. Use as the tool for sidebar changes with Thread Glance installed, not `bb thread-list`.
+description: Sets the Thread Glance sidebar via `bb thread-glance prefs`, covering shelves, snooze, park, settle, manual order, project colours, Thread display (full cards, compact working or all threads), Project icon only, the order of child threads, and how the sidebar groups (Group by worktree among them), sorts, hides, collapses, folds and settles threads. Use as the tool for sidebar changes with Thread Glance installed, not `bb thread-list`.
 ---
 
 # Thread Glance settings
@@ -59,11 +59,59 @@ the user is told where to do it instead:
 Do not change a Thread Glance setting: the user would not see it, so
 `bb thread-glance prefs set` is not run. For a request bb's list can carry out (sort,
 organisation, collapse, hidden groups, row actions), run
-`bb thread-list prefs set`, reading `bb thread-list prefs list` first. For a
-request only Thread Glance can carry out (shelves, snooze, project colours,
-automatic settling), tell the user Thread Glance is not the list in use. Offer
-to switch the sidebar to Thread Glance, and switch only if asked:
+`bb thread-list prefs set`, reading `bb thread-list prefs list` first.
+
+The user finds bb's views, sorts and groups by its menu labels, not its keys,
+so the reply names each by its label, with the key value in parentheses:
+
+- Views, under Organize → Sections: By project (`project`), By machine
+  (`machine`) and the Custom view (`chronological`). Write "the Custom view",
+  never "Custom" alone.
+- Sorts, under Sort by: Updated at (`updated`), Created at (`created`) and
+  Alphabetical (`alpha`, by title). `chronologicalSort` takes those three
+  values, which `prefs list` does not show, and sorts every view, though
+  `prefs list` describes it as "for the chronological organization".
+  `sortDirection` is `default`, `ascending` or `descending`; the Sort by menu
+  has no direction item, so the user reverses a sort by choosing the selected
+  sort again.
+- Groups, under Organize → Groups: By environment (`environmentGrouping`) and
+  By read status (`groupByReadStatus`).
+
+For a request only Thread Glance can carry out (shelves, snooze, project
+colours, Thread display, project icon only, automatic settling), tell the user
+Thread Glance is not the list in use. Offer to switch the sidebar to Thread
+Glance, and switch only if asked:
 
 ```sh
 bb settings ui set sidebar.threadListProvider thread-glance/thread-glance
 ```
+
+Group by worktree is Thread Glance's, but bb's list carries out the request
+itself: its By environment gathers threads that share a worktree into one
+row. At `auto`, its default, By environment is ticked in By project and By
+machine, not in the Custom view; `true` gathers them in every view, `false` in
+none. For this request, read these three values in place of `prefs list`:
+
+```sh
+bb thread-list prefs get organizationMode
+bb thread-list prefs get environmentGrouping
+bb thread-list prefs get groupByReadStatus
+```
+
+The first two decide the `set`:
+
+| `environmentGrouping` | By project or By machine (`organizationMode` project or machine) | the Custom view (`organizationMode` chronological) |
+| --- | --- | --- |
+| `auto` | already grouped: no `set` | `set environmentGrouping true` |
+| `true` | already grouped: no `set` | already grouped: no `set` |
+| `false` | `set environmentGrouping auto` | `set environmentGrouping true` |
+
+The reply says what bb's list does now and names each change made, or that
+none was needed, since the user cannot see from the reply alone whether the
+sidebar changed. While `groupByReadStatus` is `true`, bb's list ignores
+`environmentGrouping`, shows By environment unticked and groups nothing by
+worktree, so the reply says the grouping shows only once By read status is off,
+and turns it off only if asked. Since bb's list does what was asked, the reply
+offers no switch to Thread Glance: at most one line says that Thread Glance's
+Group by worktree also gathers them under their branch, without offering to
+switch.
