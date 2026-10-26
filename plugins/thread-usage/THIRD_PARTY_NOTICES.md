@@ -8,15 +8,11 @@ portal families, sonner and others) are not bundled and are not listed.
 | Package | Version | Licence | Copyright | Bundled into |
 |---|---|---|---|---|
 | @get-bb/plugin-sdk | 0.6.49 | MIT | Copyright (c) 2026 Michael Yong (LICENSE of github.com/get-bb/bb, the package's repository) | host |
-| @radix-ui/primitive | 1.1.7 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-compose-refs | 1.1.5 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-context | 1.2.2 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-id | 1.1.4 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-slot | 1.4.0 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-toggle | 1.1.19 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-toggle-group | 1.1.20 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-use-callback-ref | 1.1.4 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-use-controllable-state | 1.2.6 | MIT | Copyright (c) 2022 WorkOS | app |
+| @radix-ui/react-slot | 1.5.0 | MIT | Copyright (c) 2022 WorkOS | app |
+| @radix-ui/react-toggle | 1.2.1 | MIT | Copyright (c) 2022 WorkOS | app |
+| @radix-ui/react-toggle-group | 1.2.1 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-use-effect-event | 0.0.5 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-use-is-hydrated | 0.1.3 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-use-layout-effect | 1.1.4 | MIT | Copyright (c) 2022 WorkOS | app |
@@ -26,7 +22,7 @@ portal families, sonner and others) are not bundled and are not listed.
 | shebang-command | 2.0.0 | MIT | Copyright (c) Kevin Mårtensson <kevinmartensson@gmail.com> (github.com/kevva) | host |
 | shebang-regex | 3.0.0 | MIT | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | host |
 | which | 2.0.2 | ISC | Copyright (c) Isaac Z. Schlueter and Contributors | host |
-| zod | 4.6.5 | MIT | Copyright (c) 2025 Colin McDonnell | host, server |
+| zod | 4.6.7 | MIT | Copyright (c) 2025 Colin McDonnell | host, server |
 
 ## Data
 
