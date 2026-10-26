@@ -20,13 +20,15 @@ export const TONE_CLASS: Record<StatusTone, string> = {
 
 export function GlyphMark({ glyph, className }: { glyph: StatusGlyph; className?: string }) {
   if (glyph.kind === "dot") return <span aria-hidden className={cn("inline-block size-[6px] shrink-0 rounded-full bg-current", className)} />;
-  return (
+  const icon = (
     <Icon
       name={glyph.name}
       aria-hidden
       className={cn("size-3 shrink-0", glyph.spin && "animate-spin", glyph.shine && "animate-shine-icon motion-reduce:animate-none", className)}
     />
   );
+  // The pulse sits on a wrapper because it and the shine are both CSS animations, and on one element one would cancel the other.
+  return glyph.pulse ? <span aria-hidden className="inline-flex shrink-0 motion-safe:animate-pulse">{icon}</span> : icon;
 }
 
 /** The slot's one thing: the glyph, then the label, truncated to the slot. */

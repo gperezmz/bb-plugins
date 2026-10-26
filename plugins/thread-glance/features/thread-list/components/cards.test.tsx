@@ -166,6 +166,26 @@ describe("a status another plugin set on a row", () => {
     expect(colour("r")).not.toContain("text-success-foreground");
   });
 
+  const pulse = (id: string) => card(id).querySelector("[data-status-slot] [data-status=plugin] .motion-safe\\:animate-pulse");
+  const busy = { icon: "Box", label: "busy", tone: "running" } as const;
+
+  it("pulses a running status on a Full card, inside a wrapper that leaves the shine on the icon, and no other tone", async () => {
+    const m = await mount({ threads: [makeThread({ id: "r", ...fresh }), makeThread({ id: "s", ...fresh })] });
+    act(() => m.host.update({ rowStatuses: new Map<string, { icon: string; label: string; tone: "running" | "success" }>([["r", busy], ["s", sandbox]]) }));
+    await flush();
+    expect(pulse("r")?.querySelector("[data-icon=Box]")?.className).toContain("animate-shine-icon");
+    expect(pulse("r")?.className).not.toContain("animate-shine-icon");
+    expect(pulse("s")).toBeNull();
+  });
+
+  it("pulses a running status on a Folded card", async () => {
+    const m = await mount({ threads: [makeThread({ id: "r", ...fresh })], server: { settings: { threadDisplay: "compact-all" } } });
+    act(() => m.host.update({ rowStatuses: new Map([["r", busy]]) }));
+    await flush();
+    expect(card("r").getAttribute("data-card")).toBe("folded");
+    expect(pulse("r")?.querySelector("[data-icon=Box]")?.className).toContain("animate-shine-icon");
+  });
+
   it("shows on a Folded card as the icon and the age, named for assistive technology", async () => {
     const m = await mount({ threads: [makeThread({ id: "a", ...fresh })], server: { settings: { threadDisplay: "compact-all" } } });
     act(() => m.host.update({ rowStatuses: new Map([["a", sandbox]]) }));
