@@ -27,8 +27,9 @@ export function GlyphMark({ glyph, className }: { glyph: StatusGlyph; className?
       className={cn("size-3 shrink-0", glyph.spin && "animate-spin", glyph.shine && "animate-shine-icon motion-reduce:animate-none", className)}
     />
   );
-  // The pulse sits on a wrapper because it and the shine are both CSS animations, and on one element one would cancel the other.
-  return glyph.pulse ? <span aria-hidden className="inline-flex shrink-0 motion-safe:animate-pulse">{icon}</span> : icon;
+  // The pulse sits on a wrapper around the icon, as bb draws it. The wrapper carries no `aria-hidden`: bb's CSS
+  // turns the shine off for any shining icon under one, and the icon is already hidden itself.
+  return glyph.pulse ? <span className="inline-flex shrink-0 motion-safe:animate-pulse">{icon}</span> : icon;
 }
 
 /** The slot's one thing: the glyph, then the label, truncated to the slot. */
