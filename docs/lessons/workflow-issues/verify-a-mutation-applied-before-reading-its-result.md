@@ -66,5 +66,4 @@ them.
 ## Related
 
 - [A review that mutates code must not run in a checkout another session edits](review-mutations-in-shared-worktree.md)
-- [Keeping the caller's environment out of a drive run, and proving it by name](../developer-experience/keep-the-caller-environment-out-of-a-drive-run.md)
 - #296

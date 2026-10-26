@@ -30,7 +30,7 @@ Order the drive so the fleet reads first:
 2. Let one poll succeed.
 3. Make the fake answer 401 on `/repos/<owner>/…`, then let polls run until `bb unattendish fleet status` shows the fleet not watched with `refused by the service`.
 
-A 401 already answering at step 1 tests the access-problem route instead. For a `gh` or `glab` login, which the Connect popup never gives an API address, the fake is reached only through the TLS proxy of [Driving a plugin flow that sends a token to a service's real host](drive-a-token-flow-to-a-real-host-behind-a-tls-proxy.md), with a fake `gh` that answers `auth token` only with `--user`, as [Keeping the caller's environment out of a drive run, and proving it by name](keep-the-caller-environment-out-of-a-drive-run.md) requires.
+A 401 already answering at step 1 tests the access-problem route instead. For a `gh` or `glab` login, which the Connect popup never gives an API address, the fake is reached only through the TLS proxy of [Driving a plugin flow that sends a token to a service's real host](drive-a-token-flow-to-a-real-host-behind-a-tls-proxy.md), with a fake `gh` that answers `auth token` only with `--user`, since a run's doctor and `start.sh` run the bare form and fail the run when it finds a token.
 
 ## Why This Matters
 
@@ -47,5 +47,4 @@ In the #261 drive, a fleet registered while the fake already answered 401 showed
 ## Related
 
 - [Driving a plugin flow that sends a token to a service's real host](drive-a-token-flow-to-a-real-host-behind-a-tls-proxy.md)
-- [Keeping the caller's environment out of a drive run, and proving it by name](keep-the-caller-environment-out-of-a-drive-run.md)
 - #261
