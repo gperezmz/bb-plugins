@@ -1,7 +1,8 @@
 // What the Status slot says, by its precedence: a pending question, a queued
 // message, the thread's indicator, and otherwise how long ago it last did
-// anything. Pure.
-import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+// anything. A status another plugin set on the row takes the place of the
+// indicators that do not outrank it. Pure.
+import type { PluginSidebarThread, PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
 
 export type StatusTone = "failed" | "needs-you" | "working" | "unread" | "draft" | "muted";
 
@@ -9,13 +10,13 @@ export type StatusTone = "failed" | "needs-you" | "working" | "unread" | "draft"
 export type StatusGlyph = { kind: "icon"; name: string; spin?: boolean; shine?: boolean } | { kind: "dot" };
 
 export type StatusKind =
-  "needs-you" | "send-failed" | "queued" | "failed" | "unread" | "working" | "monitoring" | "workflow" | "agent" | "command" | "planning" | "goal" | "draft" | "drafting" | "age";
+  "needs-you" | "send-failed" | "queued" | "failed" | "unread" | "working" | "monitoring" | "workflow" | "agent" | "command" | "planning" | "goal" | "draft" | "drafting" | "plugin" | "age";
 
 export interface StatusSlot {
   kind: StatusKind;
   /** The text the slot shows, with " · 5m" for work that has run a minute. */
   label: string;
-  /** The label for assistive technology: bb's, where it has one. */
+  /** The label for assistive technology: bb's, where it has one, and for a plugin's status the label that plugin gave it. */
   ariaLabel: string;
   tone: StatusTone;
   glyph: StatusGlyph | null;
@@ -30,6 +31,8 @@ export interface StatusInput {
   indicatorLabel: string | null;
   /** This client's composer holds an unsent draft for the thread. */
   hasDraft: boolean;
+  /** The status another plugin set on the row, or null; null too where the surface does not draw it. */
+  rowStatus: PluginSidebarThreadRowStatus | null;
   /** When the thread was first seen working in this stretch of work; null if unknown. */
   workingSince: number | null;
   /** The age is counted from here. */
@@ -137,6 +140,31 @@ function indicatorStatus(indicator: PluginSidebarThread["indicator"], indicatorL
   }
 }
 
+/** Whether the indicator keeps the slot from a plugin's status: work in flight, a failure, or a question. */
+function outranksRowStatus(indicator: PluginSidebarThread["indicator"]): boolean {
+  return isWorkingIndicator(indicator) || indicator === "unread-error" || indicator === "waiting-for-input";
+}
+
+const ROW_STATUS_TONE: Record<NonNullable<PluginSidebarThreadRowStatus["tone"]>, StatusTone> = {
+  default: "muted",
+  error: "failed",
+  running: "working",
+  success: "unread",
+};
+
+/** A plugin's status as the slot draws it: bb's icon in bb's colour for its tone, the thread's age beside it. */
+function pluginStatus(rowStatus: PluginSidebarThreadRowStatus, age: string): StatusSlot {
+  const tone = ROW_STATUS_TONE[rowStatus.tone ?? "default"];
+  return {
+    kind: "plugin",
+    label: age,
+    ariaLabel: rowStatus.label,
+    tone,
+    glyph: ICON(rowStatus.icon, tone === "working" ? { shine: true } : {}),
+    timed: false,
+  };
+}
+
 /** The one thing the Status slot shows. */
 export function statusSlot(input: StatusInput): StatusSlot {
   if (input.hasPendingInteraction) return of(NEEDS_YOU, "Needs you");
@@ -146,7 +174,11 @@ export function statusSlot(input: StatusInput): StatusSlot {
   if (input.queuedWork === "waiting") {
     return of({ kind: "queued", label: "Queued", tone: "draft", glyph: ICON("Clock"), timed: false }, "A message is waiting to send");
   }
-  const status = indicatorStatus(foldDraft(input.indicator, input.hasDraft), input.indicatorLabel);
+  const indicator = foldDraft(input.indicator, input.hasDraft);
+  if (input.rowStatus !== null && !outranksRowStatus(indicator)) {
+    return pluginStatus(input.rowStatus, ageLabel(input.lastActivityAt, input.now));
+  }
+  const status = indicatorStatus(indicator, input.indicatorLabel);
   if (status === null) {
     const label = ageLabel(input.lastActivityAt, input.now);
     return { kind: "age", label, ariaLabel: label, tone: "muted", glyph: null, timed: false };

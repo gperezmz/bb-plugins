@@ -20,6 +20,7 @@ function ChildItem({ child, onOpen }: { child: PluginSidebarThread; onOpen(): vo
     indicator: child.indicator,
     indicatorLabel: child.indicatorLabel,
     hasDraft: false,
+    rowStatus: null,
     workingSince: null,
     lastActivityAt: lastActivityAt(child),
     now: Date.now(),

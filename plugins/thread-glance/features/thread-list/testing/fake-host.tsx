@@ -9,6 +9,7 @@ import type {
   PluginSidebarProject,
   PluginSidebarSplitLayout,
   PluginSidebarThread,
+  PluginSidebarThreadRowStatus,
   PluginSidebarThreadShortcut,
   PluginThreadListProps,
 } from "@get-bb/plugin-sdk/app";
@@ -19,6 +20,7 @@ interface HostState {
   threads: PluginSidebarThread[];
   projects: PluginSidebarProject[];
   draftIds: ReadonlySet<string>;
+  rowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
   splitLayout: PluginSidebarSplitLayout | null;
   props: PluginThreadListProps;
 }
@@ -63,6 +65,7 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
     threads: options.threads,
     projects: options.projects,
     draftIds: new Set(),
+    rowStatuses: new Map(),
     splitLayout: null,
     props: {
       activeThreadId: options.activeThreadId ?? null,
@@ -162,6 +165,7 @@ function fakeHooks(testRuntime: Runtime): Runtime {
       return hostSidebar();
     },
     useSidebarThreadDraftIds: () => useHost((state) => state.draftIds),
+    useSidebarThreadRowStatuses: () => useHost((state) => state.rowStatuses),
     useSidebarSplitLayout: () => useHost((state) => state.splitLayout),
     ThreadTitle: FakeThreadTitle as never,
   };

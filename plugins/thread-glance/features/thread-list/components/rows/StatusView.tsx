@@ -43,14 +43,15 @@ export function StatusView({ status, className }: { status: StatusSlot; classNam
   );
 }
 
-/** The folded card's form: the glyph and the time the work has run, the label for assistive technology. */
+/** The folded card's form: the glyph and the time the work has run or the age, the label for assistive technology. */
 export function CompactStatusView({ status }: { status: StatusSlot }) {
-  const elapsed = status.timed && status.label.includes(" · ") ? status.label.split(" · ")[1] : status.kind === "age" ? status.label : null;
+  const elapsed =
+    status.timed && status.label.includes(" · ") ? status.label.split(" · ")[1] : status.kind === "age" || status.kind === "plugin" ? status.label : null;
   return (
     <span data-status={status.kind} className={cn("flex shrink-0 items-center gap-1 text-[10px] leading-none font-medium tabular-nums", TONE_CLASS[status.tone])}>
       {status.glyph === null ? null : <GlyphMark glyph={status.glyph} />}
       {elapsed === null ? null : <span aria-hidden>{elapsed}</span>}
-      <span className="sr-only">{status.label}</span>
+      <span className="sr-only">{status.kind === "plugin" ? `${status.ariaLabel}, ${status.label}` : status.label}</span>
     </span>
   );
 }
